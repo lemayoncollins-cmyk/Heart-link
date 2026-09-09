@@ -45,10 +45,6 @@
 </div>
 
 <script>
-  const supabaseUrl = "https://hqwqodmrnplswieprhms.supabase.co";
-  const supabaseKey = "sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY";
-  const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-
   function showTab(tab) {
     document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
     document.getElementById('signupForm').style.display = tab === 'signup' ? 'block' : 'none';
@@ -56,8 +52,18 @@
     document.getElementById('signupTab').classList.toggle('active', tab === 'signup');
   }
 
+  let supabase;
+  try {
+    const supabaseUrl = "https://hqwqodmrnplswieprhms.supabase.co";
+    const supabaseKey = "sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY";
+    supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+  } catch (err) {
+    document.getElementById('msg').textContent = "Setup error: " + err.message;
+  }
+
   document.getElementById('signupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!supabase) { document.getElementById('msg').textContent = "Not connected yet - refresh the page."; return; }
     const email = document.getElementById('signupEmail').value;
     const password = document.getElementById('signupPassword').value;
     const { error } = await supabase.auth.signUp({ email, password });
@@ -66,6 +72,7 @@
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!supabase) { document.getElementById('msg').textContent = "Not connected yet - refresh the page."; return; }
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
