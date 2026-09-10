@@ -14,6 +14,7 @@
   button[type="submit"] { width:100%; padding:12px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; margin-top:8px; }
   .msg { text-align:center; margin-top:12px; color:#333; font-size:14px; }
   label { font-size:13px; color:#666; margin-top:8px; display:block; }
+  #photoPreview img { width:80px; height:80px; border-radius:50%; object-fit:cover; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -21,6 +22,10 @@
   <h2>Set Up Your Profile</h2>
 
   <form id="profileForm">
+    <label>Profile Photo</label>
+    <input type="file" id="photoInput" accept="image/*">
+    <div id="photoPreview"></div>
+
     <label>Full Name</label>
     <input type="text" id="fullName" required>
 
@@ -50,6 +55,19 @@
   var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
   var msg = document.getElementById('msg');
   var form = document.getElementById('profileForm');
+  var photoInput = document.getElementById('photoInput');
+  var photoPreview = document.getElementById('photoPreview');
+
+  photoInput.addEventListener('change', function() {
+    var file = photoInput.files[0];
+    if (file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        photoPreview.innerHTML = '<img src="' + e.target.result + '">';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
 
   supabaseClient.auth.getUser().then(function(res) {
     if (!res.data.user) {
@@ -58,28 +76,44 @@
     }
   });
 
-  form.addEventListener('submit', function(e) {
+  form.addEventListener('submit', async function(e) {
     e.preventDefault();
-    supabaseClient.auth.getUser().then(function(res) {
-      var user = res.data.user;
-      if (!user) { msg.textContent = 'Please log in first.'; return; }
+    var res = await supabaseClient.auth.getUser();
+    var user = res.data.user;
+    if (!user) { msg.textContent = 'Please log in first.'; return; }
 
-      var fullName = document.getElementById('fullName').value;
-      var age = document.getElementById('age').value;
-      var gender = document.getElementById('gender').value;
-      var bio = document.getElementById('bio').value;
+    msg.textContent = 'Saving...';
 
-      supabaseClient.from('profiles').upsert({
-        id: user.id,
-        full_name: fullName,
-        age: parseInt(age),
-        gender: gender,
-        bio: bio
-      }).then(function(res2) {
-        msg.textContent = res2.error ? res2.error.message : 'Profile saved!';
-      });
-    });
+    var photoUrl = null;
+    var file = photoInput.files[0];
+    if (file) {
+      var filePath = user.id + '-' + Date.now() + '-' + file.name;
+      var uploadResult = await supabaseClient.storage.from('avatars').upload(filePath, file);
+      if (uploadResult.error) {
+        msg.textContent = 'Photo upload failed: ' + uploadResult.error.message;
+        return;
+      }
+      var urlResult = supabaseClient.storage.from('avatars').getPublicUrl(filePath);
+      photoUrl = urlResult.data.publicUrl;
+    }
+
+    var fullName = document.getElementById('fullName').value;
+    var age = document.getElementById('age').value;
+    var gender = document.getElementById('gender').value;
+    var bio = document.getElementById('bio').value;
+
+    var updateData = {
+      id: user.id,
+      full_name: fullName,
+      age: parseInt(age),
+      gender: gender,
+      bio: bio
+    };
+    if (photoUrl) { updateData.photo_url = photoUrl; }
+
+    var res2 = await supabaseClient.from('profiles').upsert(updateData);
+    msg.textContent = res2.error ? res2.error.message : 'Profile saved!';
   });
 </script>
 </body>
-      </html>
+</html>
