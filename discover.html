@@ -16,12 +16,24 @@
   .profile-info p { margin:0; color:#777; font-size:13px; }
   .like-btn { background:#ff5f8a; color:white; border:none; border-radius:50%; width:44px; height:44px; font-size:20px; }
   .msg { text-align:center; margin-top:20px; color:#999; }
+  .match-popup { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:99; }
+  .match-box { background:white; border-radius:20px; padding:32px 24px; text-align:center; max-width:300px; }
+  .match-box h1 { color:#ff5f8a; margin-top:0; }
+  .match-box button { margin-top:16px; padding:10px 24px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; }
 </style>
 </head>
 <body>
 <h2>Discover</h2>
 <div class="grid" id="grid"></div>
 <div class="msg" id="msg">Loading profiles...</div>
+
+<div class="match-popup" id="matchPopup">
+  <div class="match-box">
+    <h1>💗 It's a Match!</h1>
+    <p>You and this person liked each other.</p>
+    <button onclick="document.getElementById('matchPopup').style.display='none'">Nice!</button>
+  </div>
+</div>
 
 <script>
   var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
@@ -73,11 +85,21 @@
       var likeBtn = document.createElement('button');
       likeBtn.className = 'like-btn';
       likeBtn.textContent = '💗';
-      likeBtn.addEventListener('click', function() {
+      likeBtn.addEventListener('click', async function() {
         likeBtn.disabled = true;
-        supabaseClient.from('likes').insert({ liker_id: currentUserId, liked_id: p.id }).then(function(res) {
-          likeBtn.textContent = res.error ? '❌' : '✅';
-        });
+
+        var insertRes = await supabaseClient.from('likes').insert({ liker_id: currentUserId, liked_id: p.id });
+        if (insertRes.error) {
+          likeBtn.textContent = '❌';
+          return;
+        }
+        likeBtn.textContent = '✅';
+
+        var mutualRes = await supabaseClient.from('likes').select('*').eq('liker_id', p.id).eq('liked_id', currentUserId);
+        if (mutualRes.data && mutualRes.data.length > 0) {
+          await supabaseClient.from('matches').insert({ user1_id: currentUserId, user2_id: p.id });
+          document.getElementById('matchPopup').style.display = 'flex';
+        }
       });
 
       card.appendChild(img);
