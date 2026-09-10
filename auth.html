@@ -25,7 +25,7 @@
   <h2>💗 Heart Link</h2>
   <div class="tabs">
     <button type="button" class="tab active" id="loginTab" onclick="showTab('login')">Log In</button>
-    <button type="button" class="tab" id="signupTab" onclick="showTab('signup'); alert('after switch, display is: ' + document.getElementById('signupForm').style.display)">Sign Up</button>
+    <button type="button" class="tab" id="signupTab" onclick="try { showTab('signup'); } catch(e) { alert('ERROR: ' + e.message); }">Sign Up</button>
   </div>
 
   <form id="loginForm">
