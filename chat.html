@@ -7,7 +7,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; height:100vh; display:flex; flex-direction:column; }
-  .header { background:#ff5f8a; color:white; padding:16px; text-align:center; font-weight:bold; }
+  .header { background:#ff5f8a; color:white; padding:16px; text-align:center; font-weight:bold; display:flex; justify-content:space-between; align-items:center; }
+  .coinBadge { background:rgba(255,255,255,0.25); padding:4px 10px; border-radius:12px; font-size:13px; }
   .messages { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px; }
   .bubble { max-width:75%; padding:10px 14px; border-radius:16px; font-size:14px; }
   .mine { align-self:flex-end; background:#ff5f8a; color:white; }
@@ -19,7 +20,10 @@
 </style>
 </head>
 <body>
-<div class="header">Chat</div>
+<div class="header">
+  <span>Chat</span>
+  <span class="coinBadge" id="coinBadge">-- coins</span>
+</div>
 <div class="messages" id="messages"><div class="msg" id="loadingMsg">Loading conversation list...</div></div>
 <div class="inputRow" style="display:none;" id="inputRow">
   <input type="text" id="msgInput" placeholder="Type a message...">
@@ -34,12 +38,28 @@
   var inputRow = document.getElementById('inputRow');
   var msgInput = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
+  var coinBadge = document.getElementById('coinBadge');
+
+  var MESSAGE_COST = 12;
+  var EARNING_PERCENT = 0.30;
+
   var currentUserId = null;
+  var currentUserProfile = null;
   var activeMatchId = null;
+  var otherUserId = null;
+  var otherUserProfile = null;
 
   function getMatchIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
     return params.get('match');
+  }
+
+  async function refreshCoinBadge() {
+    var res = await supabaseClient.from('profiles').select('coins').eq('id', currentUserId).single();
+    if (res.data) {
+      currentUserProfile.coins = res.data.coins;
+      coinBadge.textContent = res.data.coins + ' coins';
+    }
   }
 
   async function init() {
@@ -50,6 +70,10 @@
       return;
     }
     currentUserId = user.id;
+
+    var myProfileRes = await supabaseClient.from('profiles').select('*').eq('id', currentUserId).single();
+    currentUserProfile = myProfileRes.data || { coins: 0, gender: '' };
+    coinBadge.textContent = (currentUserProfile.coins || 0) + ' coins';
 
     var matchId = getMatchIdFromUrl();
     if (!matchId) {
@@ -67,6 +91,14 @@
     }
 
     activeMatchId = matchId;
+
+    var matchRow = await supabaseClient.from('matches').select('*').eq('id', activeMatchId).single();
+    if (matchRow.data) {
+      otherUserId = matchRow.data.user1_id === currentUserId ? matchRow.data.user2_id : matchRow.data.user1_id;
+      var otherRes = await supabaseClient.from('profiles').select('*').eq('id', otherUserId).single();
+      otherUserProfile = otherRes.data;
+    }
+
     inputRow.style.display = 'flex';
     loadMessages();
   }
@@ -90,8 +122,36 @@
   sendBtn.addEventListener('click', async function() {
     var text = msgInput.value.trim();
     if (!text || !activeMatchId) return;
+
+    var isPayingSender = currentUserProfile.gender === 'male';
+
+    if (isPayingSender) {
+      if ((currentUserProfile.coins || 0) < MESSAGE_COST) {
+        alert('Not enough coins! You need ' + MESSAGE_COST + ' coins to send a message. Please top up.');
+        return;
+      }
+    }
+
     msgInput.value = '';
+
     await supabaseClient.from('messages').insert({ match_id: activeMatchId, sender_id: currentUserId, content: text });
+
+    if (isPayingSender) {
+      var newSenderCoins = currentUserProfile.coins - MESSAGE_COST;
+      await supabaseClient.from('profiles').update({ coins: newSenderCoins }).eq('id', currentUserId);
+      await supabaseClient.from('transactions').insert({ user_id: currentUserId, amount: -MESSAGE_COST, type: 'message_spend' });
+
+      if (otherUserProfile) {
+        var earning = Math.floor(MESSAGE_COST * EARNING_PERCENT);
+        var newOtherCoins = (otherUserProfile.coins || 0) + earning;
+        await supabaseClient.from('profiles').update({ coins: newOtherCoins }).eq('id', otherUserId);
+        await supabaseClient.from('transactions').insert({ user_id: otherUserId, amount: earning, type: 'earning' });
+        otherUserProfile.coins = newOtherCoins;
+      }
+
+      await refreshCoinBadge();
+    }
+
     loadMessages();
   });
 
