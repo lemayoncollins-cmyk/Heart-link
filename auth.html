@@ -22,10 +22,10 @@
 </head>
 <body>
 <div class="card">
-  <h2>💗 Heart Link</h2>
+  <h2>Heart Link</h2>
   <div class="tabs">
-    <button type="button" class="tab active" id="loginTab" onclick="showTab('login')">Log In</button>
-    <button type="button" class="tab" id="signupTab" onclick="try { showTab('signup'); } catch(e) { alert('ERROR: ' + e.message); }">Sign Up</button>
+    <button type="button" class="tab active" id="loginTab">Log In</button>
+    <button type="button" class="tab" id="signupTab">Sign Up</button>
   </div>
 
   <form id="loginForm">
@@ -45,38 +45,49 @@
 </div>
 
 <script>
+  var loginTab = document.getElementById('loginTab');
+  var signupTab = document.getElementById('signupTab');
+  var loginForm = document.getElementById('loginForm');
+  var signupForm = document.getElementById('signupForm');
+  var msg = document.getElementById('msg');
+
   function showTab(tab) {
-    document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
-    document.getElementById('signupForm').style.display = tab === 'signup' ? 'block' : 'none';
-    document.getElementById('loginTab').classList.toggle('active', tab === 'login');
-    document.getElementById('signupTab').classList.toggle('active', tab === 'signup');
+    loginForm.style.display = tab === 'login' ? 'block' : 'none';
+    signupForm.style.display = tab === 'signup' ? 'block' : 'none';
+    loginTab.classList.toggle('active', tab === 'login');
+    signupTab.classList.toggle('active', tab === 'signup');
   }
 
-  let supabase;
+  loginTab.addEventListener('click', function() { showTab('login'); });
+  signupTab.addEventListener('click', function() { showTab('signup'); });
+
+  var supabaseClient;
   try {
-    const supabaseUrl = "https://hqwqodmrnplswieprhms.supabase.co";
-    const supabaseKey = "sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY";
-    supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+    var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+    var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
   } catch (err) {
-    document.getElementById('msg').textContent = "Setup error: " + err.message;
+    msg.textContent = 'Setup error: ' + err.message;
   }
 
-  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+  signupForm.addEventListener('submit', function(e) {
     e.preventDefault();
-    if (!supabase) { document.getElementById('msg').textContent = "Not connected yet - refresh the page."; return; }
-    const email = document.getElementById('signupEmail').value;
-    const password = document.getElementById('signupPassword').value;
-    const { error } = await supabase.auth.signUp({ email, password });
-    document.getElementById('msg').textContent = error ? error.message : "Account created! Check your email to confirm.";
+    if (!supabaseClient) { msg.textContent = 'Not connected yet - refresh the page.'; return; }
+    var email = document.getElementById('signupEmail').value;
+    var password = document.getElementById('signupPassword').value;
+    supabaseClient.auth.signUp({ email: email, password: password }).then(function(res) {
+      msg.textContent = res.error ? res.error.message : 'Account created! Check your email to confirm.';
+    });
   });
 
-  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  loginForm.addEventListener('submit', function(e) {
     e.preventDefault();
-    if (!supabase) { document.getElementById('msg').textContent = "Not connected yet - refresh the page."; return; }
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    document.getElementById('msg').textContent = error ? error.message : "Logged in! Welcome to Heart Link.";
+    if (!supabaseClient) { msg.textContent = 'Not connected yet - refresh the page.'; return; }
+    var email = document.getElementById('loginEmail').value;
+    var password = document.getElementById('loginPassword').value;
+    supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(res) {
+      msg.textContent = res.error ? res.error.message : 'Logged in! Welcome to Heart Link.';
+    });
   });
 </script>
 </body>
