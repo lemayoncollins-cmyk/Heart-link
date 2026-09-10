@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Discover</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; padding:20px; box-sizing:border-box; }
+  h2 { color:#ff5f8a; text-align:center; }
+  .grid { display:flex; flex-direction:column; gap:16px; max-width:400px; margin:0 auto; }
+  .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); display:flex; gap:12px; align-items:center; }
+  .profile-card img { width:70px; height:70px; border-radius:50%; object-fit:cover; background:#eee; }
+  .profile-info { flex:1; }
+  .profile-info h3 { margin:0 0 4px 0; color:#333; font-size:17px; }
+  .profile-info p { margin:0; color:#777; font-size:13px; }
+  .like-btn { background:#ff5f8a; color:white; border:none; border-radius:50%; width:44px; height:44px; font-size:20px; }
+  .msg { text-align:center; margin-top:20px; color:#999; }
+</style>
+</head>
+<body>
+<h2>Discover</h2>
+<div class="grid" id="grid"></div>
+<div class="msg" id="msg">Loading profiles...</div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var grid = document.getElementById('grid');
+  var msg = document.getElementById('msg');
+  var currentUserId = null;
+
+  async function loadProfiles() {
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) {
+      msg.textContent = 'Please log in first.';
+      return;
+    }
+    currentUserId = user.id;
+
+    var profilesRes = await supabaseClient.from('profiles').select('*');
+    if (profilesRes.error) {
+      msg.textContent = 'Error: ' + profilesRes.error.message;
+      return;
+    }
+
+    var others = profilesRes.data.filter(function(p) { return p.id !== currentUserId; });
+
+    if (others.length === 0) {
+      msg.textContent = 'No other profiles yet. Check back soon!';
+      return;
+    }
+
+    msg.textContent = '';
+    others.forEach(function(p) {
+      var card = document.createElement('div');
+      card.className = 'profile-card';
+
+      var img = document.createElement('img');
+      img.src = p.photo_url || 'https://via.placeholder.com/70?text=%F0%9F%92%97';
+
+      var info = document.createElement('div');
+      info.className = 'profile-info';
+      var name = document.createElement('h3');
+      name.textContent = (p.full_name || 'Someone') + (p.age ? ', ' + p.age : '');
+      var bio = document.createElement('p');
+      bio.textContent = p.bio || '';
+      info.appendChild(name);
+      info.appendChild(bio);
+
+      var likeBtn = document.createElement('button');
+      likeBtn.className = 'like-btn';
+      likeBtn.textContent = '💗';
+      likeBtn.addEventListener('click', function() {
+        likeBtn.disabled = true;
+        supabaseClient.from('likes').insert({ liker_id: currentUserId, liked_id: p.id }).then(function(res) {
+          likeBtn.textContent = res.error ? '❌' : '✅';
+        });
+      });
+
+      card.appendChild(img);
+      card.appendChild(info);
+      card.appendChild(likeBtn);
+      grid.appendChild(card);
+    });
+  }
+
+  loadProfiles();
+</script>
+</body>
+</html>
