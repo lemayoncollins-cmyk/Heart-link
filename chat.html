@@ -40,14 +40,8 @@
   var sendBtn = document.getElementById('sendBtn');
   var coinBadge = document.getElementById('coinBadge');
 
-  var MESSAGE_COST = 12;
-  var EARNING_PERCENT = 0.30;
-
   var currentUserId = null;
-  var currentUserProfile = null;
   var activeMatchId = null;
-  var otherUserId = null;
-  var otherUserProfile = null;
 
   function getMatchIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
@@ -57,7 +51,6 @@
   async function refreshCoinBadge() {
     var res = await supabaseClient.from('profiles').select('coins').eq('id', currentUserId).single();
     if (res.data) {
-      currentUserProfile.coins = res.data.coins;
       coinBadge.textContent = res.data.coins + ' coins';
     }
   }
@@ -71,9 +64,7 @@
     }
     currentUserId = user.id;
 
-    var myProfileRes = await supabaseClient.from('profiles').select('*').eq('id', currentUserId).single();
-    currentUserProfile = myProfileRes.data || { coins: 0, gender: '' };
-    coinBadge.textContent = (currentUserProfile.coins || 0) + ' coins';
+    await refreshCoinBadge();
 
     var matchId = getMatchIdFromUrl();
     if (!matchId) {
@@ -91,14 +82,6 @@
     }
 
     activeMatchId = matchId;
-
-    var matchRow = await supabaseClient.from('matches').select('*').eq('id', activeMatchId).single();
-    if (matchRow.data) {
-      otherUserId = matchRow.data.user1_id === currentUserId ? matchRow.data.user2_id : matchRow.data.user1_id;
-      var otherRes = await supabaseClient.from('profiles').select('*').eq('id', otherUserId).single();
-      otherUserProfile = otherRes.data;
-    }
-
     inputRow.style.display = 'flex';
     loadMessages();
   }
@@ -122,36 +105,15 @@
   sendBtn.addEventListener('click', async function() {
     var text = msgInput.value.trim();
     if (!text || !activeMatchId) return;
-
-    var isPayingSender = currentUserProfile.gender === 'male';
-
-    if (isPayingSender) {
-      if ((currentUserProfile.coins || 0) < MESSAGE_COST) {
-        alert('Not enough coins! You need ' + MESSAGE_COST + ' coins to send a message. Please top up.');
-        return;
-      }
-    }
-
     msgInput.value = '';
 
-    await supabaseClient.from('messages').insert({ match_id: activeMatchId, sender_id: currentUserId, content: text });
-
-    if (isPayingSender) {
-      var newSenderCoins = currentUserProfile.coins - MESSAGE_COST;
-      await supabaseClient.from('profiles').update({ coins: newSenderCoins }).eq('id', currentUserId);
-      await supabaseClient.from('transactions').insert({ user_id: currentUserId, amount: -MESSAGE_COST, type: 'message_spend' });
-
-      if (otherUserProfile) {
-        var earning = Math.floor(MESSAGE_COST * EARNING_PERCENT);
-        var newOtherCoins = (otherUserProfile.coins || 0) + earning;
-        await supabaseClient.from('profiles').update({ coins: newOtherCoins }).eq('id', otherUserId);
-        await supabaseClient.from('transactions').insert({ user_id: otherUserId, amount: earning, type: 'earning' });
-        otherUserProfile.coins = newOtherCoins;
-      }
-
-      await refreshCoinBadge();
+    var result = await supabaseClient.rpc('send_paid_message', { p_match_id: activeMatchId, p_content: text });
+    if (result.error) {
+      alert('Message failed: ' + result.error.message);
+      return;
     }
 
+    await refreshCoinBadge();
     loadMessages();
   });
 
