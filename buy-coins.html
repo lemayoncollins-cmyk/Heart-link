@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Buy Coins</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:linear-gradient(135deg,#ff5f8a,#ff8fab); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; box-sizing:border-box; }
+  .card { background:white; border-radius:16px; padding:24px; width:100%; max-width:360px; box-shadow:0 10px 30px rgba(0,0,0,0.2); }
+  h2 { color:#ff5f8a; text-align:center; margin-top:0; }
+  .packages { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+  .package { border:2px solid #eee; border-radius:12px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .package.selected { border-color:#ff5f8a; background:#fff0f4; }
+  .package .coins { font-weight:bold; color:#333; }
+  .package .price { color:#ff5f8a; font-weight:bold; }
+  input { width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:8px; box-sizing:border-box; }
+  button[type="submit"] { width:100%; padding:12px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; margin-top:8px; }
+  .msg { text-align:center; margin-top:12px; color:#333; font-size:14px; }
+  label { font-size:13px; color:#666; margin-top:8px; display:block; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>Buy Coins</h2>
+
+  <div class="packages" id="packages">
+    <div class="package" data-coins="100" data-price="100">
+      <span class="coins">100 coins</span>
+      <span class="price">KES 100</span>
+    </div>
+    <div class="package" data-coins="550" data-price="500">
+      <span class="coins">550 coins</span>
+      <span class="price">KES 500</span>
+    </div>
+    <div class="package" data-coins="1200" data-price="1000">
+      <span class="coins">1200 coins</span>
+      <span class="price">KES 1000</span>
+    </div>
+  </div>
+
+  <form id="payForm">
+    <label>M-Pesa Phone Number (format: 2547XXXXXXXX)</label>
+    <input type="text" id="phone" placeholder="254712345678" required>
+    <button type="submit">Pay with M-Pesa</button>
+  </form>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var msg = document.getElementById('msg');
+  var packagesDiv = document.getElementById('packages');
+  var selectedCoins = 100;
+  var selectedPrice = 100;
+
+  Array.from(packagesDiv.children).forEach(function(pkg) {
+    pkg.addEventListener('click', function() {
+      Array.from(packagesDiv.children).forEach(function(p) { p.classList.remove('selected'); });
+      pkg.classList.add('selected');
+      selectedCoins = parseInt(pkg.dataset.coins);
+      selectedPrice = parseInt(pkg.dataset.price);
+    });
+  });
+  packagesDiv.children[0].classList.add('selected');
+
+  document.getElementById('payForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    msg.textContent = 'Starting payment...';
+
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) { msg.textContent = 'Please log in first.'; return; }
+
+    var phone = document.getElementById('phone').value;
+
+    var res = await fetch('/.netlify/functions/initiate-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, amount: selectedPrice, userId: user.id })
+    });
+    var data = await res.json();
+
+    if (data.error || !data.MerchantRequestID) {
+      msg.textContent = 'Payment failed to start: ' + (data.errorMessage || data.error || 'Unknown error');
+      return;
+    }
+
+    await supabaseClient.from('pending_payments').insert({
+      user_id: user.id,
+      merchant_request_id: data.MerchantRequestID,
+      coins: selectedCoins,
+      status: 'pending'
+    });
+
+    msg.textContent = 'Check your phone for the M-Pesa prompt and enter your PIN!';
+  });
+</script>
+</body>
+      </html>
