@@ -89,15 +89,19 @@
       return;
     }
 
-    await supabaseClient.from('pending_payments').insert({
+    var insertRes = await supabaseClient.from('pending_payments').insert({
       user_id: user.id,
       merchant_request_id: data.MerchantRequestID,
       coins: selectedCoins,
       status: 'pending'
     });
 
-    msg.textContent = 'Check your phone for the M-Pesa prompt and enter your PIN!';
+    if (insertRes.error) {
+      msg.textContent = 'DB save failed: ' + insertRes.error.message;
+    } else {
+      msg.textContent = 'Check your phone for the M-Pesa prompt and enter your PIN!';
+    }
   });
 </script>
 </body>
-      </html>
+</html>
