@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Call</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@daily-co/daily-js"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#111; height:100vh; display:flex; flex-direction:column; }
+  #callFrame { flex:1; border:none; width:100%; }
+  .msg { color:white; text-align:center; padding:40px 20px; font-size:16px; }
+  .startBtn { background:#ff5f8a; color:white; border:none; padding:14px 24px; border-radius:24px; font-weight:bold; font-size:16px; margin:20px auto; display:block; }
+</style>
+</head>
+<body>
+<div id="landing">
+  <div class="msg" id="msg">Loading...</div>
+  <button class="startBtn" id="startBtn" style="display:none;">Start Video Call</button>
+</div>
+<iframe id="callFrame" style="display:none;" allow="camera; microphone; fullscreen; speaker; display-capture"></iframe>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var msg = document.getElementById('msg');
+  var startBtn = document.getElementById('startBtn');
+  var callFrame = document.getElementById('callFrame');
+
+  function getMatchIdFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    return params.get('match');
+  }
+
+  var matchId = getMatchIdFromUrl();
+
+  async function init() {
+    var userRes = await supabaseClient.auth.getUser();
+    if (!userRes.data.user) {
+      msg.textContent = 'Please log in first.';
+      return;
+    }
+    if (!matchId) {
+      msg.textContent = 'No match specified. Open this from your chat.';
+      return;
+    }
+    msg.textContent = 'Ready to start your call.';
+    startBtn.style.display = 'block';
+  }
+
+  startBtn.addEventListener('click', async function() {
+    msg.textContent = 'Connecting...';
+    startBtn.style.display = 'none';
+
+    var res = await fetch('/.netlify/functions/create-call-room', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId: matchId })
+    });
+    var data = await res.json();
+
+    if (!data.url) {
+      msg.textContent = 'Failed to start call. Please try again.';
+      return;
+    }
+
+    callFrame.src = data.url;
+    callFrame.style.display = 'block';
+    msg.style.display = 'none';
+  });
+
+  init();
+</script>
+</body>
+</html>
