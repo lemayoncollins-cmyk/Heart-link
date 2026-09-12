@@ -53,24 +53,12 @@
     msg.textContent = 'Connecting...';
     startBtn.style.display = 'none';
 
-    var res = await fetch('/.netlify/functions/create-call-room', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchId: matchId })
-    });
-    var data = await res.json();
+    var matchRes = await supabaseClient.from('matches').select('*').eq('id', matchId).single();
+    var existingUrl = matchRes.data ? matchRes.data.call_room_url : null;
 
-    if (!data.url) {
-      msg.textContent = 'Failed to start call. Please try again.';
-      return;
-    }
+    var roomUrl = existingUrl;
 
-    callFrame.src = data.url;
-    callFrame.style.display = 'block';
-    msg.style.display = 'none';
-  });
-
-  init();
-</script>
-</body>
-</html>
+    if (!roomUrl) {
+      var res = await fetch('/.netlify/functions/create-call-room', {
+        method: 'POST',
+        headers: { 'Content-
