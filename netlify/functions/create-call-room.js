@@ -22,6 +22,13 @@ exports.handler = async function(event) {
 
     var data = await res.json();
 
+    if (!res.ok || !data.url) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: data.error || 'Daily.co room creation failed' })
+      };
+    }
+
     return {
       statusCode: 200,
       body: JSON.stringify({ url: data.url })
