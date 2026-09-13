@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,6 +18,20 @@
   .inputRow input { flex:1; padding:12px; border:1px solid #ddd; border-radius:20px; }
   .inputRow button { background:#ff5f8a; color:white; border:none; border-radius:20px; padding:0 20px; font-weight:bold; }
   .msg { text-align:center; color:#999; padding:20px; }
+
+  .incomingCallOverlay {
+    position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.85); display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    color:white; z-index:999; text-align:center; padding:20px;
+  }
+  .incomingCallOverlay .callTitle { font-size:20px; font-weight:bold; margin-bottom:24px; }
+  .incomingCallOverlay .callButtons { display:flex; gap:16px; }
+  .incomingCallOverlay button {
+    padding:14px 28px; border:none; border-radius:24px; font-weight:bold; font-size:16px;
+  }
+  .joinCallBtn { background:#2ecc71; color:white; }
+  .declineCallBtn { background:#e74c3c; color:white; }
 </style>
 </head>
 <body>
@@ -30,6 +45,14 @@
   <button id="sendBtn">Send</button>
 </div>
 
+<div class="incomingCallOverlay" id="incomingCallOverlay">
+  <div class="callTitle" id="incomingCallText">Incoming call...</div>
+  <div class="callButtons">
+    <button class="joinCallBtn" id="joinCallBtn">Join</button>
+    <button class="declineCallBtn" id="declineCallBtn">Decline</button>
+  </div>
+</div>
+
 <script>
   var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
   var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
@@ -39,9 +62,14 @@
   var msgInput = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
   var coinBadge = document.getElementById('coinBadge');
+  var incomingCallOverlay = document.getElementById('incomingCallOverlay');
+  var incomingCallText = document.getElementById('incomingCallText');
+  var joinCallBtn = document.getElementById('joinCallBtn');
+  var declineCallBtn = document.getElementById('declineCallBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
+  var currentInvite = null;
 
   function getMatchIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
@@ -55,6 +83,44 @@
     }
   }
 
+  function showIncomingCall(invite) {
+    currentInvite = invite;
+    incomingCallText.textContent = 'Incoming video call...';
+    incomingCallOverlay.style.display = 'flex';
+  }
+
+  function hideIncomingCall() {
+    incomingCallOverlay.style.display = 'none';
+    currentInvite = null;
+  }
+
+  joinCallBtn.addEventListener('click', function() {
+    if (currentInvite) {
+      window.location.href = 'call.html?match=' + currentInvite.match_id;
+    }
+  });
+
+  declineCallBtn.addEventListener('click', async function() {
+    if (currentInvite) {
+      await supabaseClient.from('call_invites').update({ status: 'declined' }).eq('id', currentInvite.id);
+    }
+    hideIncomingCall();
+  });
+
+  function listenForCalls() {
+    supabaseClient
+      .channel('call_invites_channel')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'call_invites',
+        filter: 'receiver_id=eq.' + currentUserId
+      }, function(payload) {
+        showIncomingCall(payload.new);
+      })
+      .subscribe();
+  }
+
   async function init() {
     var userRes = await supabaseClient.auth.getUser();
     var user = userRes.data.user;
@@ -65,6 +131,7 @@
     currentUserId = user.id;
 
     await refreshCoinBadge();
+    listenForCalls();
 
     var matchId = getMatchIdFromUrl();
     if (!matchId) {
