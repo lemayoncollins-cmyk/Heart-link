@@ -15,6 +15,7 @@ exports.handler = async function(event) {
           exp: Math.floor(Date.now() / 1000) + 3600,
           enable_screenshare: false,
           enable_chat: false,
+          enable_prejoin_ui: false,
           max_participants: 2
         }
       })
