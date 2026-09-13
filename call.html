@@ -27,6 +27,7 @@
   var msg = document.getElementById('msg');
   var startBtn = document.getElementById('startBtn');
   var callFrame = document.getElementById('callFrame');
+  var landing = document.getElementById('landing');
 
   function getMatchIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
@@ -53,12 +54,54 @@
     msg.textContent = 'Connecting...';
     startBtn.style.display = 'none';
 
-    var matchRes = await supabaseClient.from('matches').select('*').eq('id', matchId).single();
-    var existingUrl = matchRes.data ? matchRes.data.call_room_url : null;
+    try {
+      var matchRes = await supabaseClient.from('matches').select('*').eq('id', matchId).single();
 
-    var roomUrl = existingUrl;
+      if (matchRes.error || !matchRes.data) {
+        msg.textContent = 'Could not find this match.';
+        startBtn.style.display = 'block';
+        return;
+      }
 
-    if (!roomUrl) {
-      var res = await fetch('/.netlify/functions/create-call-room', {
-        method: 'POST',
-        headers: { 'Content-
+      var existingUrl = matchRes.data.call_room_url;
+      var roomUrl = existingUrl;
+
+      if (!roomUrl) {
+        var res = await fetch('/.netlify/functions/create-call-room', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchId: matchId })
+        });
+
+        var data = await res.json();
+
+        if (!res.ok || !data.url) {
+          msg.textContent = 'Could not start the call. Please try again.';
+          startBtn.style.display = 'block';
+          return;
+        }
+
+        roomUrl = data.url;
+
+        await supabaseClient
+          .from('matches')
+          .update({ call_room_url: roomUrl })
+          .eq('id', matchId);
+      }
+
+      var callFrameInstance = window.DailyIframe.wrap(callFrame);
+      await callFrameInstance.join({ url: roomUrl });
+
+      landing.style.display = 'none';
+      callFrame.style.display = 'block';
+
+    } catch (err) {
+      msg.textContent = 'Something went wrong. Please try again.';
+      startBtn.style.display = 'block';
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>
