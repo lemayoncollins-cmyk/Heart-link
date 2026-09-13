@@ -34,6 +34,13 @@
     return params.get('match');
   }
 
+  function withTimeout(promise, ms, label) {
+    var timeout = new Promise(function(_, reject) {
+      setTimeout(function() { reject(new Error(label + ' timed out')); }, ms);
+    });
+    return Promise.race([promise, timeout]);
+  }
+
   var matchId = getMatchIdFromUrl();
 
   async function init() {
@@ -51,11 +58,14 @@
   }
 
   startBtn.addEventListener('click', async function() {
-    msg.textContent = 'Connecting...';
     startBtn.style.display = 'none';
 
     try {
-      var matchRes = await supabaseClient.from('matches').select('*').eq('id', matchId).single();
+      msg.textContent = 'Looking up match...';
+      var matchRes = await withTimeout(
+        supabaseClient.from('matches').select('*').eq('id', matchId).single(),
+        10000, 'Match lookup'
+      );
 
       if (matchRes.error || !matchRes.data) {
         msg.textContent = 'Could not find this match.';
@@ -63,20 +73,23 @@
         return;
       }
 
-      var existingUrl = matchRes.data.call_room_url;
-      var roomUrl = existingUrl;
+      var roomUrl = matchRes.data.call_room_url;
 
       if (!roomUrl) {
-        var res = await fetch('/.netlify/functions/create-call-room', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ matchId: matchId })
-        });
+        msg.textContent = 'Creating call room...';
+        var res = await withTimeout(
+          fetch('/.netlify/functions/create-call-room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matchId: matchId })
+          }),
+          10000, 'Room creation'
+        );
 
         var data = await res.json();
 
         if (!res.ok || !data.url) {
-          msg.textContent = 'Could not start the call. Please try again.';
+          msg.textContent = 'Could not start the call: ' + (data.error || 'unknown error');
           startBtn.style.display = 'block';
           return;
         }
@@ -89,14 +102,17 @@
           .eq('id', matchId);
       }
 
-      var callFrameInstance = window.DailyIframe.wrap(callFrame);
-      await callFrameInstance.join({ url: roomUrl });
-
+      msg.textContent = 'Joining call...';
       landing.style.display = 'none';
       callFrame.style.display = 'block';
 
+      var callFrameInstance = window.DailyIframe.wrap(callFrame);
+      await withTimeout(callFrameInstance.join({ url: roomUrl }), 15000, 'Video join');
+
     } catch (err) {
-      msg.textContent = 'Something went wrong. Please try again.';
+      landing.style.display = 'block';
+      callFrame.style.display = 'none';
+      msg.textContent = 'Error: ' + err.message;
       startBtn.style.display = 'block';
     }
   });
