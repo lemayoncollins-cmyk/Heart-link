@@ -106,8 +106,14 @@
       landing.style.display = 'none';
       callFrame.style.display = 'block';
 
-      var callFrameInstance = window.DailyIframe.wrap(callFrame);
-      await withTimeout(callFrameInstance.join({ url: roomUrl }), 15000, 'Video join');
+      var callFrameInstance = window.DailyIframe.wrap(callFrame, {
+        showLeaveButton: true
+      });
+
+      await withTimeout(
+        callFrameInstance.join({ url: roomUrl, showFullscreenButton: true, prejoinUI: false }),
+        20000, 'Video join'
+      );
 
     } catch (err) {
       landing.style.display = 'block';
