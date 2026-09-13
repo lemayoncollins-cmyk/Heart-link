@@ -42,6 +42,7 @@
   }
 
   var matchId = getMatchIdFromUrl();
+  var currentUserId = null;
 
   async function init() {
     var userRes = await supabaseClient.auth.getUser();
@@ -49,6 +50,8 @@
       msg.textContent = 'Please log in first.';
       return;
     }
+    currentUserId = userRes.data.user.id;
+
     if (!matchId) {
       msg.textContent = 'No match specified. Open this from your chat.';
       return;
@@ -73,7 +76,9 @@
         return;
       }
 
-      var roomUrl = matchRes.data.call_room_url;
+      var match = matchRes.data;
+      var otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id;
+      var roomUrl = match.call_room_url;
 
       if (!roomUrl) {
         msg.textContent = 'Creating call room...';
@@ -101,6 +106,15 @@
           .update({ call_room_url: roomUrl })
           .eq('id', matchId);
       }
+
+      msg.textContent = 'Ringing your match...';
+      await supabaseClient.from('call_invites').insert({
+        match_id: matchId,
+        caller_id: currentUserId,
+        receiver_id: otherUserId,
+        call_room_url: roomUrl,
+        status: 'ringing'
+      });
 
       msg.textContent = 'Joining call...';
       landing.style.display = 'none';
