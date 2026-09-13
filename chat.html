@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,7 +36,10 @@
 <body>
 <div class="header">
   <span>Chat</span>
-  <span class="coinBadge" id="coinBadge">-- coins</span>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="videoCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">📹 Call</button>
+    <span class="coinBadge" id="coinBadge">-- coins</span>
+  </div>
 </div>
 <div class="messages" id="messages"><div class="msg" id="loadingMsg">Loading conversation list...</div></div>
 <div class="inputRow" style="display:none;" id="inputRow">
@@ -66,6 +68,7 @@
   var incomingCallText = document.getElementById('incomingCallText');
   var joinCallBtn = document.getElementById('joinCallBtn');
   var declineCallBtn = document.getElementById('declineCallBtn');
+  var videoCallBtn = document.getElementById('videoCallBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
@@ -96,7 +99,7 @@
 
   joinCallBtn.addEventListener('click', function() {
     if (currentInvite) {
-      window.location.href = 'call.html?match=' + currentInvite.match_id;
+      window.location.href = 'call.html?match=' + currentInvite.match_id + '&type=video';
     }
   });
 
@@ -105,6 +108,14 @@
       await supabaseClient.from('call_invites').update({ status: 'declined' }).eq('id', currentInvite.id);
     }
     hideIncomingCall();
+  });
+
+  videoCallBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    window.location.href = 'call.html?match=' + activeMatchId + '&type=video';
   });
 
   function listenForCalls() {
@@ -191,4 +202,4 @@
   init();
 </script>
 </body>
-</html>
+  </html>
