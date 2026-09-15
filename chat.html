@@ -97,10 +97,12 @@
     currentInvite = null;
   }
 
-  joinCallBtn.addEventListener('click', function() {
+  joinCallBtn.addEventListener('click', async function() {
     if (currentInvite) {
-      window.location.href = 'call.html?match=' + currentInvite.match_id + '&type=video';
+      await supabaseClient.from('call_invites').update({ status: 'accepted' }).eq('id', currentInvite.id);
+      window.location.href = 'call.html?match=' + currentInvite.match_id + '&invite=' + currentInvite.id;
     }
+    hideIncomingCall();
   });
 
   declineCallBtn.addEventListener('click', async function() {
@@ -115,7 +117,7 @@
       alert('Open a specific match chat first.');
       return;
     }
-    window.location.href = 'call.html?match=' + activeMatchId + '&type=video';
+    window.location.href = 'call.html?match=' + activeMatchId;
   });
 
   function listenForCalls() {
@@ -202,4 +204,4 @@
   init();
 </script>
 </body>
-  </html>
+</html>
