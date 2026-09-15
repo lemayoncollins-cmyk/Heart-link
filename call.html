@@ -17,7 +17,7 @@
 <body>
 <div id="landing">
   <div class="msg" id="msg">Loading...</div>
-  <button class="startBtn" id="startBtn" style="display:none;">Start Video Call</button>
+  <button class="startBtn" id="startBtn" style="display:none;">Start Call</button>
   <button class="cancelBtn" id="cancelBtn">Cancel</button>
 </div>
 <iframe id="callFrame" style="display:none;" allow="camera; microphone; fullscreen; speaker; display-capture"></iframe>
@@ -46,11 +46,16 @@
 
   var matchId = getParam('match');
   var inviteId = getParam('invite');
+  var callType = getParam('type') || 'video';
   var currentUserId = null;
   var ringChannel = null;
   var ringTimeoutHandle = null;
 
-  async function joinRoom(roomUrl) {
+  if (callType === 'voice') {
+    startBtn.textContent = 'Start Voice Call';
+  }
+
+  async function joinRoom(roomUrl, type) {
     msg.textContent = 'Joining call...';
     startBtn.style.display = 'none';
     cancelBtn.style.display = 'none';
@@ -59,8 +64,13 @@
 
     var callFrameInstance = window.DailyIframe.wrap(callFrame, { showLeaveButton: true });
     await withTimeout(
-      callFrameInstance.join({ url: roomUrl, showFullscreenButton: true, prejoinUI: false }),
-      30000, 'Video join'
+      callFrameInstance.join({
+        url: roomUrl,
+        showFullscreenButton: true,
+        prejoinUI: false,
+        startVideoOff: type === 'voice'
+      }),
+      30000, 'Call join'
     );
   }
 
@@ -71,14 +81,14 @@
       msg.textContent = 'This call is no longer available.';
       return;
     }
-    joinRoom(res.data.call_room_url).catch(function(err) {
+    joinRoom(res.data.call_room_url, res.data.call_type || 'video').catch(function(err) {
       landing.style.display = 'block';
       callFrame.style.display = 'none';
       msg.textContent = 'Error: ' + err.message;
     });
   }
 
-  // CALLER FLOW: normal ?match=<id>, tapping Start Video Call
+  // CALLER FLOW: normal ?match=<id>&type=video|voice, tapping Start Call
   async function callerInit() {
     var userRes = await supabaseClient.auth.getUser();
     if (!userRes.data.user) {
@@ -147,6 +157,7 @@
         caller_id: currentUserId,
         receiver_id: otherUserId,
         call_room_url: roomUrl,
+        call_type: callType,
         status: 'ringing'
       }).select().single();
 
@@ -203,7 +214,7 @@
     if (invite.status === 'accepted') {
       cleanupRing();
       cancelBtn.style.display = 'none';
-      joinRoom(roomUrl).catch(function(err) {
+      joinRoom(roomUrl, invite.call_type || 'video').catch(function(err) {
         landing.style.display = 'block';
         callFrame.style.display = 'none';
         msg.textContent = 'Error: ' + err.message;
