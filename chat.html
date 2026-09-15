@@ -31,6 +31,30 @@
   }
   .joinCallBtn { background:#2ecc71; color:white; }
   .declineCallBtn { background:#e74c3c; color:white; }
+
+  .giftOverlay {
+    position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.6); display:none;
+    align-items:flex-end; justify-content:center; z-index:998;
+  }
+  .giftSheet {
+    background:white; width:100%; max-width:500px; border-radius:20px 20px 0 0;
+    padding:20px; box-sizing:border-box;
+  }
+  .giftSheet h3 { margin:0 0 16px 0; text-align:center; color:#333; }
+  .giftList { display:flex; flex-direction:column; gap:10px; max-height:50vh; overflow-y:auto; }
+  .giftOption {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#fff0f4; border-radius:14px; padding:12px 16px; font-size:15px; color:#333;
+  }
+  .giftOption .giftLabel { display:flex; align-items:center; gap:10px; font-weight:bold; }
+  .giftOption button {
+    background:#ff5f8a; color:white; border:none; border-radius:16px; padding:8px 16px; font-weight:bold;
+  }
+  .giftCancelBtn {
+    display:block; width:100%; margin-top:16px; background:#eee; color:#333;
+    border:none; border-radius:16px; padding:12px; font-weight:bold;
+  }
 </style>
 </head>
 <body>
@@ -39,6 +63,7 @@
   <div style="display:flex; align-items:center; gap:10px;">
     <button id="videoCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">📹 Call</button>
     <button id="voiceCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎙️ Voice</button>
+    <button id="giftBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎁 Gift</button>
     <span class="coinBadge" id="coinBadge">-- coins</span>
   </div>
 </div>
@@ -53,6 +78,14 @@
   <div class="callButtons">
     <button class="joinCallBtn" id="joinCallBtn">Join</button>
     <button class="declineCallBtn" id="declineCallBtn">Decline</button>
+  </div>
+</div>
+
+<div class="giftOverlay" id="giftOverlay">
+  <div class="giftSheet">
+    <h3>Send a Gift</h3>
+    <div class="giftList" id="giftList"><div class="msg">Loading gifts...</div></div>
+    <button class="giftCancelBtn" id="giftCancelBtn">Cancel</button>
   </div>
 </div>
 
@@ -71,6 +104,10 @@
   var declineCallBtn = document.getElementById('declineCallBtn');
   var videoCallBtn = document.getElementById('videoCallBtn');
   var voiceCallBtn = document.getElementById('voiceCallBtn');
+  var giftBtn = document.getElementById('giftBtn');
+  var giftOverlay = document.getElementById('giftOverlay');
+  var giftList = document.getElementById('giftList');
+  var giftCancelBtn = document.getElementById('giftCancelBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
@@ -129,6 +166,60 @@
     }
     window.location.href = 'call.html?match=' + activeMatchId + '&type=voice';
   });
+
+  giftBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    openGiftPicker();
+  });
+
+  giftCancelBtn.addEventListener('click', function() {
+    giftOverlay.style.display = 'none';
+  });
+
+  async function openGiftPicker() {
+    giftOverlay.style.display = 'flex';
+    giftList.innerHTML = '<div class="msg">Loading gifts...</div>';
+
+    var res = await supabaseClient.from('gifts').select('*').eq('active', true).order('coin_cost', { ascending: true });
+    if (res.error || !res.data || res.data.length === 0) {
+      giftList.innerHTML = '<div class="msg">No gifts available right now.</div>';
+      return;
+    }
+
+    giftList.innerHTML = '';
+    res.data.forEach(function(g) {
+      var row = document.createElement('div');
+      row.className = 'giftOption';
+      row.innerHTML =
+        '<span class="giftLabel">' + g.emoji + ' ' + g.name + ' — ' + g.coin_cost + ' coins</span>' +
+        '<button data-gift-id="' + g.id + '">Send</button>';
+      giftList.appendChild(row);
+    });
+
+    giftList.querySelectorAll('button').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var giftId = btn.getAttribute('data-gift-id');
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        var result = await supabaseClient.rpc('send_gift', { p_match_id: activeMatchId, p_gift_id: giftId });
+
+        if (result.error) {
+          alert('Gift failed: ' + result.error.message);
+          btn.disabled = false;
+          btn.textContent = 'Send';
+          return;
+        }
+
+        giftOverlay.style.display = 'none';
+        await refreshCoinBadge();
+        loadMessages();
+      });
+    });
+  }
 
   function listenForCalls() {
     supabaseClient
