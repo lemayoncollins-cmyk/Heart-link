@@ -11,12 +11,14 @@
   #callFrame { flex:1; border:none; width:100%; }
   .msg { color:white; text-align:center; padding:40px 20px; font-size:16px; }
   .startBtn { background:#ff5f8a; color:white; border:none; padding:14px 24px; border-radius:24px; font-weight:bold; font-size:16px; margin:20px auto; display:block; }
+  .cancelBtn { background:#444; color:white; border:none; padding:10px 20px; border-radius:20px; font-size:14px; margin:10px auto; display:none; }
 </style>
 </head>
 <body>
 <div id="landing">
   <div class="msg" id="msg">Loading...</div>
   <button class="startBtn" id="startBtn" style="display:none;">Start Video Call</button>
+  <button class="cancelBtn" id="cancelBtn">Cancel</button>
 </div>
 <iframe id="callFrame" style="display:none;" allow="camera; microphone; fullscreen; speaker; display-capture"></iframe>
 
@@ -26,12 +28,13 @@
   var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
   var msg = document.getElementById('msg');
   var startBtn = document.getElementById('startBtn');
+  var cancelBtn = document.getElementById('cancelBtn');
   var callFrame = document.getElementById('callFrame');
   var landing = document.getElementById('landing');
 
-  function getMatchIdFromUrl() {
+  function getParam(name) {
     var params = new URLSearchParams(window.location.search);
-    return params.get('match');
+    return params.get(name);
   }
 
   function withTimeout(promise, ms, label) {
@@ -41,10 +44,42 @@
     return Promise.race([promise, timeout]);
   }
 
-  var matchId = getMatchIdFromUrl();
+  var matchId = getParam('match');
+  var inviteId = getParam('invite');
   var currentUserId = null;
+  var ringChannel = null;
+  var ringTimeoutHandle = null;
 
-  async function init() {
+  async function joinRoom(roomUrl) {
+    msg.textContent = 'Joining call...';
+    startBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    landing.style.display = 'none';
+    callFrame.style.display = 'block';
+
+    var callFrameInstance = window.DailyIframe.wrap(callFrame, { showLeaveButton: true });
+    await withTimeout(
+      callFrameInstance.join({ url: roomUrl, showFullscreenButton: true, prejoinUI: false }),
+      30000, 'Video join'
+    );
+  }
+
+  // RECEIVER FLOW: arrived via ?invite=<id> after tapping Join in chat.html
+  async function receiverInit() {
+    var res = await supabaseClient.from('call_invites').select('*').eq('id', inviteId).single();
+    if (res.error || !res.data || !res.data.call_room_url) {
+      msg.textContent = 'This call is no longer available.';
+      return;
+    }
+    joinRoom(res.data.call_room_url).catch(function(err) {
+      landing.style.display = 'block';
+      callFrame.style.display = 'none';
+      msg.textContent = 'Error: ' + err.message;
+    });
+  }
+
+  // CALLER FLOW: normal ?match=<id>, tapping Start Video Call
+  async function callerInit() {
     var userRes = await supabaseClient.auth.getUser();
     if (!userRes.data.user) {
       msg.textContent = 'Please log in first.';
@@ -107,37 +142,85 @@
           .eq('id', matchId);
       }
 
-      msg.textContent = 'Ringing your match...';
-      await supabaseClient.from('call_invites').insert({
+      var inviteRes = await supabaseClient.from('call_invites').insert({
         match_id: matchId,
         caller_id: currentUserId,
         receiver_id: otherUserId,
         call_room_url: roomUrl,
         status: 'ringing'
-      });
+      }).select().single();
 
-      msg.textContent = 'Joining call...';
-      landing.style.display = 'none';
-      callFrame.style.display = 'block';
+      if (inviteRes.error || !inviteRes.data) {
+        msg.textContent = 'Could not ring your match. Please try again.';
+        startBtn.style.display = 'block';
+        return;
+      }
 
-      var callFrameInstance = window.DailyIframe.wrap(callFrame, {
-        showLeaveButton: true
-      });
+      var currentInviteId = inviteRes.data.id;
+      msg.textContent = 'Calling... waiting for answer.';
+      cancelBtn.style.display = 'block';
 
-      await withTimeout(
-        callFrameInstance.join({ url: roomUrl, showFullscreenButton: true, prejoinUI: false }),
-        20000, 'Video join'
-      );
+      ringChannel = supabaseClient
+        .channel('ring_status_' + currentInviteId)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'call_invites',
+          filter: 'id=eq.' + currentInviteId
+        }, function(payload) {
+          handleInviteUpdate(payload.new, roomUrl);
+        })
+        .subscribe();
+
+      ringTimeoutHandle = setTimeout(async function() {
+        await supabaseClient.from('call_invites').update({ status: 'missed' }).eq('id', currentInviteId);
+        cleanupRing();
+        msg.textContent = 'No answer. They may be busy right now.';
+        startBtn.style.display = 'block';
+      }, 30000);
+
+      cancelBtn.onclick = async function() {
+        clearTimeout(ringTimeoutHandle);
+        await supabaseClient.from('call_invites').update({ status: 'cancelled' }).eq('id', currentInviteId);
+        cleanupRing();
+        msg.textContent = 'Call cancelled.';
+        cancelBtn.style.display = 'none';
+        startBtn.style.display = 'block';
+      };
 
     } catch (err) {
-      landing.style.display = 'block';
-      callFrame.style.display = 'none';
       msg.textContent = 'Error: ' + err.message;
       startBtn.style.display = 'block';
     }
   });
 
-  init();
+  function cleanupRing() {
+    if (ringTimeoutHandle) clearTimeout(ringTimeoutHandle);
+    if (ringChannel) supabaseClient.removeChannel(ringChannel);
+  }
+
+  function handleInviteUpdate(invite, roomUrl) {
+    if (invite.status === 'accepted') {
+      cleanupRing();
+      cancelBtn.style.display = 'none';
+      joinRoom(roomUrl).catch(function(err) {
+        landing.style.display = 'block';
+        callFrame.style.display = 'none';
+        msg.textContent = 'Error: ' + err.message;
+      });
+    } else if (invite.status === 'declined') {
+      cleanupRing();
+      msg.textContent = 'Call declined.';
+      cancelBtn.style.display = 'none';
+      startBtn.style.display = 'block';
+    }
+  }
+
+  if (inviteId) {
+    receiverInit();
+  } else {
+    callerInit();
+  }
 </script>
 </body>
 </html>
