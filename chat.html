@@ -38,6 +38,7 @@
   <span>Chat</span>
   <div style="display:flex; align-items:center; gap:10px;">
     <button id="videoCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">📹 Call</button>
+    <button id="voiceCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎙️ Voice</button>
     <span class="coinBadge" id="coinBadge">-- coins</span>
   </div>
 </div>
@@ -69,6 +70,7 @@
   var joinCallBtn = document.getElementById('joinCallBtn');
   var declineCallBtn = document.getElementById('declineCallBtn');
   var videoCallBtn = document.getElementById('videoCallBtn');
+  var voiceCallBtn = document.getElementById('voiceCallBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
@@ -88,7 +90,7 @@
 
   function showIncomingCall(invite) {
     currentInvite = invite;
-    incomingCallText.textContent = 'Incoming video call...';
+    incomingCallText.textContent = invite.call_type === 'voice' ? 'Incoming voice call...' : 'Incoming video call...';
     incomingCallOverlay.style.display = 'flex';
   }
 
@@ -100,7 +102,7 @@
   joinCallBtn.addEventListener('click', async function() {
     if (currentInvite) {
       await supabaseClient.from('call_invites').update({ status: 'accepted' }).eq('id', currentInvite.id);
-      window.location.href = 'call.html?match=' + currentInvite.match_id + '&invite=' + currentInvite.id;
+      window.location.href = 'call.html?match=' + currentInvite.match_id + '&invite=' + currentInvite.id + '&type=' + currentInvite.call_type;
     }
     hideIncomingCall();
   });
@@ -117,7 +119,15 @@
       alert('Open a specific match chat first.');
       return;
     }
-    window.location.href = 'call.html?match=' + activeMatchId;
+    window.location.href = 'call.html?match=' + activeMatchId + '&type=video';
+  });
+
+  voiceCallBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    window.location.href = 'call.html?match=' + activeMatchId + '&type=voice';
   });
 
   function listenForCalls() {
