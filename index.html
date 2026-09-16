@@ -17,13 +17,25 @@
     height: 100vh;
     text-align: center;
     padding: 20px;
+    box-sizing: border-box;
   }
   h1 { font-size: 2.5rem; margin-bottom: 10px; }
-  p { font-size: 1.1rem; opacity: 0.9; }
+  p { font-size: 1.1rem; opacity: 0.9; margin-bottom: 40px; }
+  .btnGroup { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 300px; }
+  .btn {
+    display: block; padding: 14px; border-radius: 24px; font-weight: bold;
+    font-size: 16px; text-decoration: none; text-align: center;
+  }
+  .primaryBtn { background: white; color: #ff5f8a; }
+  .secondaryBtn { background: rgba(255,255,255,0.25); color: white; }
 </style>
 </head>
 <body>
   <h1>💗 Heart Link</h1>
   <p>Connect. Chat. Fall in love.</p>
+  <div class="btnGroup">
+    <a class="btn primaryBtn" href="auth.html?mode=signup">Sign Up</a>
+    <a class="btn secondaryBtn" href="auth.html?mode=login">Log In</a>
+  </div>
 </body>
 </html>
