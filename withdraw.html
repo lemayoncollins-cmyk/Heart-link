@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Withdraw</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; }
+  .header { background:#ff5f8a; color:white; padding:16px; text-align:center; font-weight:bold; }
+  .card { background:white; margin:16px; padding:20px; border-radius:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+  .balanceLabel { color:#999; font-size:13px; }
+  .balanceValue { font-size:28px; font-weight:bold; color:#ff5f8a; margin-top:4px; }
+  label { display:block; margin-top:16px; font-size:13px; color:#555; font-weight:bold; }
+  input { width:100%; padding:12px; border:1px solid #ddd; border-radius:10px; margin-top:6px; box-sizing:border-box; font-size:15px; }
+  .submitBtn { width:100%; background:#ff5f8a; color:white; border:none; padding:14px; border-radius:24px; font-weight:bold; font-size:16px; margin-top:20px; }
+  .hint { font-size:12px; color:#999; margin-top:6px; }
+  .msg { text-align:center; padding:10px; font-size:14px; }
+  .error { color:#e74c3c; }
+  .success { color:#2ecc71; }
+  .historyItem {
+    display:flex; justify-content:space-between; padding:12px 0;
+    border-bottom:1px solid #f0f0f0; font-size:14px;
+  }
+  .historyItem:last-child { border-bottom:none; }
+  .statusBadge {
+    font-size:11px; padding:3px 8px; border-radius:10px; font-weight:bold;
+  }
+  .status-pending { background:#fff3cd; color:#856404; }
+  .status-paid { background:#d4edda; color:#155724; }
+</style>
+</head>
+<body>
+<div class="header">Withdraw Earnings</div>
+
+<div class="card">
+  <div class="balanceLabel">Available balance</div>
+  <div class="balanceValue" id="balanceValue">-- coins</div>
+  <div class="hint">1 coin = 1 KSh · Minimum withdrawal: 500 coins</div>
+</div>
+
+<div class="card">
+  <label>Amount to withdraw (coins)</label>
+  <input type="number" id="amountInput" placeholder="e.g. 500">
+
+  <label>M-Pesa number</label>
+  <input type="text" id="mpesaInput" placeholder="e.g. 07XXXXXXXX">
+
+  <button class="submitBtn" id="submitBtn">Request Withdrawal</button>
+  <div class="msg" id="statusMsg"></div>
+</div>
+
+<div class="card">
+  <div style="font-weight:bold; margin-bottom:8px;">Withdrawal History</div>
+  <div id="historyList"><div class="msg">Loading...</div></div>
+</div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+  var balanceValue = document.getElementById('balanceValue');
+  var amountInput = document.getElementById('amountInput');
+  var mpesaInput = document.getElementById('mpesaInput');
+  var submitBtn = document.getElementById('submitBtn');
+  var statusMsg = document.getElementById('statusMsg');
+  var historyList = document.getElementById('historyList');
+
+  var currentUserId = null;
+
+  async function refreshBalance() {
+    var res = await supabaseClient.from('profiles').select('coins').eq('id', currentUserId).single();
+    if (res.data) {
+      balanceValue.textContent = res.data.coins + ' coins';
+    }
+  }
+
+  async function loadHistory() {
+    var res = await supabaseClient
+      .from('withdrawals')
+      .select('*')
+      .eq('user_id', currentUserId)
+      .order('requested_at', { ascending: false });
+
+    if (!res.data || res.data.length === 0) {
+      historyList.innerHTML = '<div class="msg">No withdrawal requests yet.</div>';
+      return;
+    }
+
+    historyList.innerHTML = res.data.map(function(w) {
+      var badgeClass = w.status === 'paid' ? 'status-paid' : 'status-pending';
+      var dateStr = new Date(w.requested_at).toLocaleDateString();
+      return '<div class="historyItem">' +
+        '<span>' + w.amount_ksh + ' KSh<br><span style="color:#999; font-size:12px;">' + dateStr + '</span></span>' +
+        '<span class="statusBadge ' + badgeClass + '">' + w.status + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  submitBtn.addEventListener('click', async function() {
+    var amount = parseInt(amountInput.value, 10);
+    var mpesaNumber = mpesaInput.value.trim();
+
+    statusMsg.textContent = '';
+    statusMsg.className = 'msg';
+
+    if (!amount || amount <= 0) {
+      statusMsg.textContent = 'Enter a valid amount.';
+      statusMsg.className = 'msg error';
+      return;
+    }
+    if (!mpesaNumber) {
+      statusMsg.textContent = 'Enter your M-Pesa number.';
+      statusMsg.className = 'msg error';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    var result = await supabaseClient.rpc('request_withdrawal', {
+      p_amount_coins: amount,
+      p_mpesa_number: mpesaNumber
+    });
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Request Withdrawal';
+
+    if (result.error) {
+      statusMsg.textContent = result.error.message;
+      statusMsg.className = 'msg error';
+      return;
+    }
+
+    statusMsg.textContent = 'Withdrawal request submitted!';
+    statusMsg.className = 'msg success';
+    amountInput.value = '';
+    mpesaInput.value = '';
+
+    await refreshBalance();
+    await loadHistory();
+  });
+
+  async function init() {
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) {
+      document.body.innerHTML = '<div class="msg">Please log in first.</div>';
+      return;
+    }
+    currentUserId = user.id;
+
+    await refreshBalance();
+    await loadHistory();
+  }
+
+  init();
+</script>
+</body>
+</html>
