@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#f5f5f7; min-height:100vh; padding:16px; box-sizing:border-box; }
+  h2 { color:#ff5f8a; text-align:center; margin-bottom:20px; }
+  .statsRow { display:flex; gap:10px; max-width:500px; margin:0 auto 24px auto; }
+  .statCard { flex:1; background:white; border-radius:14px; padding:14px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+  .statCard .value { font-size:22px; font-weight:bold; color:#ff5f8a; }
+  .statCard .label { font-size:12px; color:#888; margin-top:4px; }
+  .section { max-width:500px; margin:0 auto 30px auto; }
+  .section h3 { color:#333; margin-bottom:10px; }
+  .card { background:white; border-radius:14px; padding:14px; margin-bottom:10px; box-shadow:0 2px 8px rgba(0,0,0,0.06); font-size:14px; }
+  .row { display:flex; justify-content:space-between; align-items:center; }
+  .payBtn { background:#2ecc71; color:white; border:none; padding:8px 14px; border-radius:14px; font-weight:bold; font-size:13px; }
+  .statusBadge { font-size:11px; padding:3px 8px; border-radius:10px; font-weight:bold; }
+  .status-pending { background:#fff3cd; color:#856404; }
+  .status-paid { background:#d4edda; color:#155724; }
+  .msg { text-align:center; color:#999; padding:20px; }
+  .userRow { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:13px; }
+  .userRow:last-child { border-bottom:none; }
+</style>
+</head>
+<body>
+<h2>🛠 Admin Dashboard</h2>
+
+<div class="statsRow" id="statsRow">
+  <div class="statCard"><div class="value" id="totalUsers">--</div><div class="label">Total Users</div></div>
+  <div class="statCard"><div class="value" id="totalCoins">--</div><div class="label">Coins in Circulation</div></div>
+  <div class="statCard"><div class="value" id="pendingCount">--</div><div class="label">Pending Withdrawals</div></div>
+</div>
+
+<div class="section">
+  <h3>Pending Withdrawals</h3>
+  <div id="withdrawalsList"><div class="msg">Loading...</div></div>
+</div>
+
+<div class="section">
+  <h3>All Users</h3>
+  <div class="card" id="usersCard"><div class="msg">Loading...</div></div>
+</div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+  var totalUsers = document.getElementById('totalUsers');
+  var totalCoins = document.getElementById('totalCoins');
+  var pendingCount = document.getElementById('pendingCount');
+  var withdrawalsList = document.getElementById('withdrawalsList');
+  var usersCard = document.getElementById('usersCard');
+
+  async function loadStatsAndUsers() {
+    var profilesRes = await supabaseClient.from('profiles').select('*');
+    if (!profilesRes.data) {
+      usersCard.innerHTML = '<div class="msg">Could not load users.</div>';
+      return;
+    }
+
+    var users = profilesRes.data;
+    totalUsers.textContent = users.length;
+    totalCoins.textContent = users.reduce(function(sum, u) { return sum + (u.coins || 0); }, 0);
+
+    usersCard.innerHTML = users.map(function(u) {
+      return '<div class="userRow"><span>' + (u.full_name || 'Unnamed') + (u.is_admin ? ' 👑' : '') + '</span><span>' + (u.coins || 0) + ' coins</span></div>';
+    }).join('');
+  }
+
+  async function loadWithdrawals() {
+    var res = await supabaseClient
+      .from('withdrawals')
+      .select('*')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: true });
+
+    if (!res.data) {
+      withdrawalsList.innerHTML = '<div class="msg">Could not load withdrawals.</div>';
+      return;
+    }
+
+    pendingCount.textContent = res.data.length;
+
+    if (res.data.length === 0) {
+      withdrawalsList.innerHTML = '<div class="msg">No pending withdrawals.</div>';
+      return;
+    }
+
+    withdrawalsList.innerHTML = '';
+    res.data.forEach(function(w) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var dateStr = new Date(w.requested_at).toLocaleDateString();
+      card.innerHTML =
+        '<div class="row">' +
+          '<span><strong>' + w.amount_ksh + ' KSh</strong><br><span style="color:#999;">' + w.mpesa_number + ' · ' + dateStr + '</span></span>' +
+          '<button class="payBtn" data-id="' + w.id + '">Mark as Paid</button>' +
+        '</div>';
+      withdrawalsList.appendChild(card);
+    });
+
+    withdrawalsList.querySelectorAll('.payBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var id = btn.getAttribute('data-id');
+        btn.disabled = true;
+        btn.textContent = 'Updating...';
+
+        var result = await supabaseClient
+          .from('withdrawals')
+          .update({ status: 'paid', paid_at: new Date().toISOString() })
+          .eq('id', id);
+
+        if (result.error) {
+          alert('Failed: ' + result.error.message);
+          btn.disabled = false;
+          btn.textContent = 'Mark as Paid';
+          return;
+        }
+
+        loadWithdrawals();
+      });
+    });
+  }
+
+  async function init() {
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) {
+      document.body.innerHTML = '<div class="msg">Please log in first.</div>';
+      return;
+    }
+
+    var profileRes = await supabaseClient.from('profiles').select('is_admin').eq('id', user.id).single();
+    if (!profileRes.data || !profileRes.data.is_admin) {
+      document.body.innerHTML = '<div class="msg">Access denied. This page is for admins only.</div>';
+      return;
+    }
+
+    await loadStatsAndUsers();
+    await loadWithdrawals();
+  }
+
+  init();
+</script>
+</body>
+  </html>
