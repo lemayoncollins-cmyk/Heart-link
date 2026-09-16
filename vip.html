@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - VIP</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; padding:20px; box-sizing:border-box; }
+  h2 { color:#ff5f8a; text-align:center; }
+  .balanceCard { background:white; border-radius:16px; padding:16px; text-align:center; max-width:400px; margin:0 auto 20px auto; box-shadow:0 4px 12px rgba(0,0,0,0.06); }
+  .balanceCard .label { color:#999; font-size:13px; }
+  .balanceCard .value { font-size:24px; font-weight:bold; color:#ff5f8a; margin-top:4px; }
+  .currentVip { background:#fff8e1; border-radius:12px; padding:12px; max-width:400px; margin:0 auto 20px auto; text-align:center; font-size:14px; color:#7a5c00; }
+  .tierList { display:flex; flex-direction:column; gap:16px; max-width:400px; margin:0 auto; }
+  .tierCard { background:white; border-radius:16px; padding:20px; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
+  .tierCard h3 { margin:0 0 8px 0; color:#333; }
+  .tierCard .cost { color:#ff5f8a; font-weight:bold; margin-bottom:8px; }
+  .tierCard .perks { color:#777; font-size:13px; margin-bottom:14px; }
+  .tierCard button { width:100%; background:#ff5f8a; color:white; border:none; padding:12px; border-radius:20px; font-weight:bold; }
+  .msg { text-align:center; margin-top:16px; color:#333; font-size:14px; }
+  .error { color:#e74c3c; }
+  .success { color:#2ecc71; }
+</style>
+</head>
+<body>
+<h2>💎 VIP Membership</h2>
+
+<div class="balanceCard">
+  <div class="label">Your coin balance</div>
+  <div class="value" id="balanceValue">-- coins</div>
+</div>
+
+<div class="currentVip" id="currentVip" style="display:none;"></div>
+
+<div class="tierList" id="tierList"><div class="msg">Loading tiers...</div></div>
+<div class="msg" id="statusMsg"></div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+  var balanceValue = document.getElementById('balanceValue');
+  var currentVip = document.getElementById('currentVip');
+  var tierList = document.getElementById('tierList');
+  var statusMsg = document.getElementById('statusMsg');
+
+  var currentUserId = null;
+
+  async function refreshBalance() {
+    var res = await supabaseClient.from('profiles').select('coins, vip_tier_id, vip_expires_at').eq('id', currentUserId).single();
+    if (res.data) {
+      balanceValue.textContent = res.data.coins + ' coins';
+
+      if (res.data.vip_tier_id && res.data.vip_expires_at && new Date(res.data.vip_expires_at) > new Date()) {
+        var tierRes = await supabaseClient.from('vip_tiers').select('name').eq('id', res.data.vip_tier_id).single();
+        var tierName = tierRes.data ? tierRes.data.name : 'VIP';
+        var expiryStr = new Date(res.data.vip_expires_at).toLocaleDateString();
+        currentVip.textContent = '⭐ Active: ' + tierName + ' VIP until ' + expiryStr;
+        currentVip.style.display = 'block';
+      } else {
+        currentVip.style.display = 'none';
+      }
+    }
+  }
+
+  async function loadTiers() {
+    var res = await supabaseClient.from('vip_tiers').select('*').eq('active', true).order('coin_cost', { ascending: true });
+    if (res.error || !res.data || res.data.length === 0) {
+      tierList.innerHTML = '<div class="msg">No VIP tiers available right now.</div>';
+      return;
+    }
+
+    tierList.innerHTML = '';
+    res.data.forEach(function(t) {
+      var card = document.createElement('div');
+      card.className = 'tierCard';
+      card.innerHTML =
+        '<h3>' + t.name + '</h3>' +
+        '<div class="cost">' + t.coin_cost + ' coins · ' + t.duration_days + ' days</div>' +
+        '<div class="perks">' + (t.perks || '') + '</div>' +
+        '<button data-tier-id="' + t.id + '">Get ' + t.name + '</button>';
+      tierList.appendChild(card);
+    });
+
+    tierList.querySelectorAll('button').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var tierId = btn.getAttribute('data-tier-id');
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+        statusMsg.textContent = '';
+        statusMsg.className = 'msg';
+
+        var result = await supabaseClient.rpc('purchase_vip', { p_tier_id: tierId });
+
+        btn.disabled = false;
+        btn.textContent = 'Get ' + btn.closest('.tierCard').querySelector('h3').textContent;
+
+        if (result.error) {
+          statusMsg.textContent = result.error.message;
+          statusMsg.className = 'msg error';
+          return;
+        }
+
+        statusMsg.textContent = 'VIP activated!';
+        statusMsg.className = 'msg success';
+        await refreshBalance();
+      });
+    });
+  }
+
+  async function init() {
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) {
+      document.body.innerHTML = '<div class="msg">Please log in first.</div>';
+      return;
+    }
+    currentUserId = user.id;
+
+    await refreshBalance();
+    await loadTiers();
+  }
+
+  init();
+</script>
+</body>
+  </html>
