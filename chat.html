@@ -18,76 +18,17 @@
   .inputRow button { background:#ff5f8a; color:white; border:none; border-radius:20px; padding:0 20px; font-weight:bold; }
   .msg { text-align:center; color:#999; padding:20px; }
   .matchLink { display:block; background:white; margin:8px 16px; padding:14px; border-radius:14px; text-decoration:none; color:#333; font-weight:bold; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
-
-  .incomingCallOverlay {
-    position:fixed; top:0; left:0; right:0; bottom:0;
-    background:rgba(0,0,0,0.85); display:none;
-    align-items:center; justify-content:center; flex-direction:column;
-    color:white; z-index:999; text-align:center; padding:20px;
-  }
-  .incomingCallOverlay .callTitle { font-size:20px; font-weight:bold; margin-bottom:24px; }
-  .incomingCallOverlay .callButtons { display:flex; gap:16px; }
-  .incomingCallOverlay button {
-    padding:14px 28px; border:none; border-radius:24px; font-weight:bold; font-size:16px;
-  }
-  .joinCallBtn { background:#2ecc71; color:white; }
-  .declineCallBtn { background:#e74c3c; color:white; }
-
-  .giftOverlay {
-    position:fixed; top:0; left:0; right:0; bottom:0;
-    background:rgba(0,0,0,0.6); display:none;
-    align-items:flex-end; justify-content:center; z-index:998;
-  }
-  .giftSheet {
-    background:white; width:100%; max-width:500px; border-radius:20px 20px 0 0;
-    padding:20px; box-sizing:border-box;
-  }
-  .giftSheet h3 { margin:0 0 16px 0; text-align:center; color:#333; }
-  .giftList { display:flex; flex-direction:column; gap:10px; max-height:50vh; overflow-y:auto; }
-  .giftOption {
-    display:flex; align-items:center; justify-content:space-between;
-    background:#fff0f4; border-radius:14px; padding:12px 16px; font-size:15px; color:#333;
-  }
-  .giftOption .giftLabel { display:flex; align-items:center; gap:10px; font-weight:bold; }
-  .giftOption button {
-    background:#ff5f8a; color:white; border:none; border-radius:16px; padding:8px 16px; font-weight:bold;
-  }
-  .giftCancelBtn {
-    display:block; width:100%; margin-top:16px; background:#eee; color:#333;
-    border:none; border-radius:16px; padding:12px; font-weight:bold;
-  }
 </style>
 </head>
 <body>
 <div class="header">
   <span>Chat</span>
-  <div style="display:flex; align-items:center; gap:10px;">
-    <button id="videoCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">📹 Call</button>
-    <button id="voiceCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎙️ Voice</button>
-    <button id="giftBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎁 Gift</button>
-    <span class="coinBadge" id="coinBadge">-- coins</span>
-  </div>
+  <span class="coinBadge" id="coinBadge">-- coins</span>
 </div>
-<div class="messages" id="messages"><div class="msg" id="loadingMsg">Loading conversation list...</div></div>
+<div class="messages" id="messages"><div class="msg" id="loadingMsg">Starting...</div></div>
 <div class="inputRow" style="display:none;" id="inputRow">
   <input type="text" id="msgInput" placeholder="Type a message...">
   <button id="sendBtn">Send</button>
-</div>
-
-<div class="incomingCallOverlay" id="incomingCallOverlay">
-  <div class="callTitle" id="incomingCallText">Incoming call...</div>
-  <div class="callButtons">
-    <button class="joinCallBtn" id="joinCallBtn">Join</button>
-    <button class="declineCallBtn" id="declineCallBtn">Decline</button>
-  </div>
-</div>
-
-<div class="giftOverlay" id="giftOverlay">
-  <div class="giftSheet">
-    <h3>Send a Gift</h3>
-    <div class="giftList" id="giftList"><div class="msg">Loading gifts...</div></div>
-    <button class="giftCancelBtn" id="giftCancelBtn">Cancel</button>
-  </div>
 </div>
 
 <script>
@@ -99,176 +40,138 @@
   var msgInput = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
   var coinBadge = document.getElementById('coinBadge');
-  var incomingCallOverlay = document.getElementById('incomingCallOverlay');
-  var incomingCallText = document.getElementById('incomingCallText');
-  var joinCallBtn = document.getElementById('joinCallBtn');
-  var declineCallBtn = document.getElementById('declineCallBtn');
-  var videoCallBtn = document.getElementById('videoCallBtn');
-  var voiceCallBtn = document.getElementById('voiceCallBtn');
-  var giftBtn = document.getElementById('giftBtn');
-  var giftOverlay = document.getElementById('giftOverlay');
-  var giftList = document.getElementById('giftList');
-  var giftCancelBtn = document.getElementById('giftCancelBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
-  var currentInvite = null;
 
   function getMatchIdFromUrl() {
     var params = new URLSearchParams(window.location.search);
     return params.get('match');
   }
 
+  function withTimeout(promise, ms, label) {
+    var timeout = new Promise(function(_, reject) {
+      setTimeout(function() { reject(new Error(label + ' timed out')); }, ms);
+    });
+    return Promise.race([promise, timeout]);
+  }
+
+  function setStatus(text) {
+    messagesDiv.innerHTML = '<div class="msg">' + text + '</div>';
+  }
+
   async function refreshCoinBadge() {
-    var res = await supabaseClient.from('profiles').select('coins').eq('id', currentUserId).single();
+    var res = await withTimeout(
+      supabaseClient.from('profiles').select('coins').eq('id', currentUserId).single(),
+      8000, 'Coin balance lookup'
+    );
     if (res.data) {
       coinBadge.textContent = res.data.coins + ' coins';
     }
   }
 
-  function showIncomingCall(invite) {
-    currentInvite = invite;
-    incomingCallText.textContent = invite.call_type === 'voice' ? 'Incoming voice call...' : 'Incoming video call...';
-    incomingCallOverlay.style.display = 'flex';
-  }
+  async function init() {
+    try {
+      setStatus('Checking login...');
+      var userRes = await withTimeout(supabaseClient.auth.getUser(), 8000, 'Login check');
+      var user = userRes.data.user;
+      if (!user) {
+        setStatus('Please log in first.');
+        return;
+      }
+      currentUserId = user.id;
 
-  function hideIncomingCall() {
-    incomingCallOverlay.style.display = 'none';
-    currentInvite = null;
-  }
+      setStatus('Loading coin balance...');
+      await refreshCoinBadge();
 
-  joinCallBtn.addEventListener('click', async function() {
-    if (currentInvite) {
-      await supabaseClient.from('call_invites').update({ status: 'accepted' }).eq('id', currentInvite.id);
-      window.location.href = 'call.html?match=' + currentInvite.match_id + '&invite=' + currentInvite.id + '&type=' + currentInvite.call_type;
-    }
-    hideIncomingCall();
-  });
+      var matchId = getMatchIdFromUrl();
+      if (!matchId) {
+        setStatus('Loading your matches...');
+        var matchesRes = await withTimeout(
+          supabaseClient.from('matches').select('*'),
+          8000, 'Matches lookup'
+        );
 
-  declineCallBtn.addEventListener('click', async function() {
-    if (currentInvite) {
-      await supabaseClient.from('call_invites').update({ status: 'declined' }).eq('id', currentInvite.id);
-    }
-    hideIncomingCall();
-  });
-
-  videoCallBtn.addEventListener('click', function() {
-    if (!activeMatchId) {
-      alert('Open a specific match chat first.');
-      return;
-    }
-    window.location.href = 'call.html?match=' + activeMatchId + '&type=video';
-  });
-
-  voiceCallBtn.addEventListener('click', function() {
-    if (!activeMatchId) {
-      alert('Open a specific match chat first.');
-      return;
-    }
-    window.location.href = 'call.html?match=' + activeMatchId + '&type=voice';
-  });
-
-  giftBtn.addEventListener('click', function() {
-    if (!activeMatchId) {
-      alert('Open a specific match chat first.');
-      return;
-    }
-    openGiftPicker();
-  });
-
-  giftCancelBtn.addEventListener('click', function() {
-    giftOverlay.style.display = 'none';
-  });
-
-  async function openGiftPicker() {
-    giftOverlay.style.display = 'flex';
-    giftList.innerHTML = '<div class="msg">Loading gifts...</div>';
-
-    var res = await supabaseClient.from('gifts').select('*').eq('active', true).order('coin_cost', { ascending: true });
-    if (res.error || !res.data || res.data.length === 0) {
-      giftList.innerHTML = '<div class="msg">No gifts available right now.</div>';
-      return;
-    }
-
-    giftList.innerHTML = '';
-    res.data.forEach(function(g) {
-      var row = document.createElement('div');
-      row.className = 'giftOption';
-      row.innerHTML =
-        '<span class="giftLabel">' + g.emoji + ' ' + g.name + ' — ' + g.coin_cost + ' coins</span>' +
-        '<button data-gift-id="' + g.id + '">Send</button>';
-      giftList.appendChild(row);
-    });
-
-    giftList.querySelectorAll('button').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        var giftId = btn.getAttribute('data-gift-id');
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
-
-        var result = await supabaseClient.rpc('send_gift', { p_match_id: activeMatchId, p_gift_id: giftId });
-
-        if (result.error) {
-          alert('Gift failed: ' + result.error.message);
-          btn.disabled = false;
-          btn.textContent = 'Send';
+        if (!matchesRes.data || matchesRes.data.length === 0) {
+          setStatus('No matches yet. Go like someone on Discover first!');
           return;
         }
 
-        giftOverlay.style.display = 'none';
-        await refreshCoinBadge();
-        loadMessages();
-      });
-    });
-  }
+        setStatus('Loading match names...');
+        var otherIds = matchesRes.data.map(function(m) {
+          return m.user1_id === currentUserId ? m.user2_id : m.user1_id;
+        });
 
-  function listenForCalls() {
-    supabaseClient
-      .channel('call_invites_channel')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'call_invites',
-        filter: 'receiver_id=eq.' + currentUserId
-      }, function(payload) {
-        showIncomingCall(payload.new);
-      })
-      .subscribe();
-  }
+        var profilesRes = await withTimeout(
+          supabaseClient.from('profiles').select('id, full_name').in('id', otherIds),
+          8000, 'Match name lookup'
+        );
+        var nameMap = {};
+        if (profilesRes.data) {
+          profilesRes.data.forEach(function(p) { nameMap[p.id] = p.full_name || 'Someone'; });
+        }
 
-  async function init() {
-    var userRes = await supabaseClient.auth.getUser();
-    var user = userRes.data.user;
-    if (!user) {
-      messagesDiv.innerHTML = '<div class="msg">Please log in first.</div>';
-      return;
-    }
-    currentUserId = user.id;
-
-    await refreshCoinBadge();
-    listenForCalls();
-
-    var matchId = getMatchIdFromUrl();
-    if (!matchId) {
-      var matchesRes = await supabaseClient.from('matches').select('*');
-      if (!matchesRes.data || matchesRes.data.length === 0) {
-        messagesDiv.innerHTML = '<div class="msg">No matches yet. Go like someone on Discover first!</div>';
+        messagesDiv.innerHTML = '';
+        matchesRes.data.forEach(function(m) {
+          var otherId = m.user1_id === currentUserId ? m.user2_id : m.user1_id;
+          var link = document.createElement('a');
+          link.className = 'matchLink';
+          link.href = 'chat.html?match=' + m.id;
+          link.textContent = nameMap[otherId] || 'Someone';
+          messagesDiv.appendChild(link);
+        });
         return;
       }
 
-      var otherIds = matchesRes.data.map(function(m) {
-        return m.user1_id === currentUserId ? m.user2_id : m.user1_id;
-      });
+      activeMatchId = matchId;
+      inputRow.style.display = 'flex';
+      setStatus('Loading messages...');
+      await loadMessages();
 
-      var profilesRes = await supabaseClient.from('profiles').select('id, full_name').in('id', otherIds);
-      var nameMap = {};
-      if (profilesRes.data) {
-        profilesRes.data.forEach(function(p) { nameMap[p.id] = p.full_name || 'Someone'; });
-      }
+    } catch (err) {
+      setStatus('Error: ' + err.message);
+    }
+  }
 
-      messagesDiv.innerHTML = '';
-      matchesRes.data.forEach(function(m) {
-        var otherId = m.user1_id === currentUserId ? m.user2_id : m.user1_id;
-        var link = document.createElement('a');
-        link.className = 'matchLink';
-        link.hre
+  async function loadMessages() {
+    var res = await withTimeout(
+      supabaseClient.from('messages').select('*').eq('match_id', activeMatchId).order('created_at', { ascending: true }),
+      8000, 'Messages lookup'
+    );
+    messagesDiv.innerHTML = '';
+    if (res.error) {
+      messagesDiv.innerHTML = '<div class="msg">Error: ' + res.error.message + '</div>';
+      return;
+    }
+    res.data.forEach(function(m) {
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble ' + (m.sender_id === currentUserId ? 'mine' : 'theirs');
+      bubble.textContent = m.content;
+      messagesDiv.appendChild(bubble);
+    });
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  sendBtn.addEventListener('click', async function() {
+    var text = msgInput.value.trim();
+    if (!text || !activeMatchId) return;
+    msgInput.value = '';
+
+    var result = await supabaseClient.rpc('send_paid_message', { p_match_id: activeMatchId, p_content: text });
+    if (result.error) {
+      alert('Message failed: ' + result.error.message);
+      return;
+    }
+
+    await refreshCoinBadge();
+    loadMessages();
+  });
+
+  msgInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') sendBtn.click();
+  });
+
+  init();
+</script>
+</body>
+</html>
