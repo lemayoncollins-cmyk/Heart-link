@@ -17,6 +17,7 @@
   .inputRow input { flex:1; padding:12px; border:1px solid #ddd; border-radius:20px; }
   .inputRow button { background:#ff5f8a; color:white; border:none; border-radius:20px; padding:0 20px; font-weight:bold; }
   .msg { text-align:center; color:#999; padding:20px; }
+  .matchLink { display:block; background:white; margin:8px 16px; padding:14px; border-radius:14px; text-decoration:none; color:#333; font-weight:bold; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
 
   .incomingCallOverlay {
     position:fixed; top:0; left:0; right:0; bottom:0;
@@ -254,55 +255,20 @@
         messagesDiv.innerHTML = '<div class="msg">No matches yet. Go like someone on Discover first!</div>';
         return;
       }
-      var links = matchesRes.data.map(function(m) {
+
+      var otherIds = matchesRes.data.map(function(m) {
+        return m.user1_id === currentUserId ? m.user2_id : m.user1_id;
+      });
+
+      var profilesRes = await supabaseClient.from('profiles').select('id, full_name').in('id', otherIds);
+      var nameMap = {};
+      if (profilesRes.data) {
+        profilesRes.data.forEach(function(p) { nameMap[p.id] = p.full_name || 'Someone'; });
+      }
+
+      messagesDiv.innerHTML = '';
+      matchesRes.data.forEach(function(m) {
         var otherId = m.user1_id === currentUserId ? m.user2_id : m.user1_id;
-        return '<div class="msg"><a href="chat.html?match=' + m.id + '">Open chat with match ' + otherId.slice(0,8) + '</a></div>';
-      }).join('');
-      messagesDiv.innerHTML = links;
-      return;
-    }
-
-    activeMatchId = matchId;
-    inputRow.style.display = 'flex';
-    loadMessages();
-  }
-
-  async function loadMessages() {
-    messagesDiv.innerHTML = '';
-    var res = await supabaseClient.from('messages').select('*').eq('match_id', activeMatchId).order('created_at', { ascending: true });
-    if (res.error) {
-      messagesDiv.innerHTML = '<div class="msg">Error: ' + res.error.message + '</div>';
-      return;
-    }
-    res.data.forEach(function(m) {
-      var bubble = document.createElement('div');
-      bubble.className = 'bubble ' + (m.sender_id === currentUserId ? 'mine' : 'theirs');
-      bubble.textContent = m.content;
-      messagesDiv.appendChild(bubble);
-    });
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  }
-
-  sendBtn.addEventListener('click', async function() {
-    var text = msgInput.value.trim();
-    if (!text || !activeMatchId) return;
-    msgInput.value = '';
-
-    var result = await supabaseClient.rpc('send_paid_message', { p_match_id: activeMatchId, p_content: text });
-    if (result.error) {
-      alert('Message failed: ' + result.error.message);
-      return;
-    }
-
-    await refreshCoinBadge();
-    loadMessages();
-  });
-
-  msgInput.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') sendBtn.click();
-  });
-
-  init();
-</script>
-</body>
-</html>
+        var link = document.createElement('a');
+        link.className = 'matchLink';
+        link.hre
