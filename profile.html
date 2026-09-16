@@ -112,7 +112,16 @@
     if (photoUrl) { updateData.photo_url = photoUrl; }
 
     var res2 = await supabaseClient.from('profiles').upsert(updateData);
-    msg.textContent = res2.error ? res2.error.message : 'Profile saved!';
+
+    if (res2.error) {
+      msg.textContent = res2.error.message;
+      return;
+    }
+
+    msg.textContent = 'Profile saved! Redirecting...';
+    setTimeout(function() {
+      window.location.href = 'discover.html';
+    }, 800);
   });
 </script>
 </body>
