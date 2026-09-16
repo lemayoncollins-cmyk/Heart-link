@@ -24,7 +24,7 @@
 <div class="card">
   <h2>Heart Link</h2>
   <div class="tabs">
-    <button type="button" class="tab active" id="loginTab">Log In</button>
+    <button type="button" class="tab" id="loginTab">Log In</button>
     <button type="button" class="tab" id="signupTab">Sign Up</button>
   </div>
 
@@ -61,6 +61,10 @@
   loginTab.addEventListener('click', function() { showTab('login'); });
   signupTab.addEventListener('click', function() { showTab('signup'); });
 
+  var params = new URLSearchParams(window.location.search);
+  var initialMode = params.get('mode') === 'signup' ? 'signup' : 'login';
+  showTab(initialMode);
+
   var supabaseClient;
   try {
     var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
@@ -76,7 +80,12 @@
     var email = document.getElementById('signupEmail').value;
     var password = document.getElementById('signupPassword').value;
     supabaseClient.auth.signUp({ email: email, password: password }).then(function(res) {
-      msg.textContent = res.error ? res.error.message : 'Account created! Check your email to confirm.';
+      if (res.error) {
+        msg.textContent = res.error.message;
+        return;
+      }
+      msg.textContent = 'Account created! Redirecting...';
+      setTimeout(function() { window.location.href = 'profile.html'; }, 1000);
     });
   });
 
@@ -86,7 +95,12 @@
     var email = document.getElementById('loginEmail').value;
     var password = document.getElementById('loginPassword').value;
     supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(res) {
-      msg.textContent = res.error ? res.error.message : 'Logged in! Welcome to Heart Link.';
+      if (res.error) {
+        msg.textContent = res.error.message;
+        return;
+      }
+      msg.textContent = 'Logged in! Redirecting...';
+      setTimeout(function() { window.location.href = 'discover.html'; }, 800);
     });
   });
 </script>
