@@ -7,15 +7,23 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; padding:20px; box-sizing:border-box; }
-  .topBar { display:flex; justify-content:space-between; align-items:center; max-width:400px; margin:0 auto 10px auto; }
+  .topBar { display:flex; justify-content:space-between; align-items:center; max-width:400px; margin:0 auto 10px auto; gap:8px; }
   h2 { color:#ff5f8a; margin:0; }
-  .matchesLink { color:#ff5f8a; font-weight:bold; text-decoration:none; font-size:14px; background:white; padding:8px 14px; border-radius:16px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+  .topLinks { display:flex; gap:8px; }
+  .topLinks a { color:#ff5f8a; font-weight:bold; text-decoration:none; font-size:13px; background:white; padding:8px 12px; border-radius:16px; box-shadow:0 2px 6px rgba(0,0,0,0.06); white-space:nowrap; }
   .grid { display:flex; flex-direction:column; gap:16px; max-width:400px; margin:0 auto; }
-  .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); display:flex; gap:12px; align-items:center; }
+  .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); display:flex; gap:12px; align-items:center; position:relative; }
+  .profile-card.vip-gold { border:2px solid #ffd700; }
+  .profile-card.vip-silver { border:2px solid #c0c0c0; }
+  .profile-card.vip-bronze { border:2px solid #cd7f32; }
   .profile-card img { width:70px; height:70px; border-radius:50%; object-fit:cover; background:#eee; }
   .profile-info { flex:1; }
-  .profile-info h3 { margin:0 0 4px 0; color:#333; font-size:17px; }
+  .profile-info h3 { margin:0 0 4px 0; color:#333; font-size:17px; display:flex; align-items:center; gap:6px; }
   .profile-info p { margin:0; color:#777; font-size:13px; }
+  .vipBadge { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:bold; color:white; }
+  .badge-gold { background:#d4af00; }
+  .badge-silver { background:#999; }
+  .badge-bronze { background:#a15c2e; }
   .like-btn { background:#ff5f8a; color:white; border:none; border-radius:50%; width:44px; height:44px; font-size:20px; }
   .msg { text-align:center; margin-top:20px; color:#999; }
   .match-popup { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:99; }
@@ -28,7 +36,10 @@
 <body>
 <div class="topBar">
   <h2>Discover</h2>
-  <a class="matchesLink" href="chat.html">My Matches 💬</a>
+  <div class="topLinks">
+    <a href="vip.html">💎 VIP</a>
+    <a href="chat.html">💬 Matches</a>
+  </div>
 </div>
 <div class="grid" id="grid"></div>
 <div class="msg" id="msg">Loading profiles...</div>
@@ -51,6 +62,15 @@
   var startChatBtn = document.getElementById('startChatBtn');
   var currentUserId = null;
 
+  function vipInfo(tierName) {
+    if (!tierName) return null;
+    var lower = tierName.toLowerCase();
+    if (lower.indexOf('gold') !== -1) return { cardClass: 'vip-gold', badgeClass: 'badge-gold' };
+    if (lower.indexOf('silver') !== -1) return { cardClass: 'vip-silver', badgeClass: 'badge-silver' };
+    if (lower.indexOf('bronze') !== -1) return { cardClass: 'vip-bronze', badgeClass: 'badge-bronze' };
+    return { cardClass: '', badgeClass: 'badge-bronze' };
+  }
+
   async function loadProfiles() {
     var userRes = await supabaseClient.auth.getUser();
     var user = userRes.data.user;
@@ -66,6 +86,12 @@
       return;
     }
 
+    var tiersRes = await supabaseClient.from('vip_tiers').select('id, name');
+    var tierMap = {};
+    if (tiersRes.data) {
+      tiersRes.data.forEach(function(t) { tierMap[t.id] = t.name; });
+    }
+
     var others = profilesRes.data.filter(function(p) { return p.id !== currentUserId; });
 
     if (others.length === 0) {
@@ -73,10 +99,22 @@
       return;
     }
 
+    var now = new Date();
+    others.forEach(function(p) {
+      p._isVip = p.vip_tier_id && p.vip_expires_at && new Date(p.vip_expires_at) > now;
+      p._tierName = p._isVip ? tierMap[p.vip_tier_id] : null;
+    });
+
+    others.sort(function(a, b) {
+      return (b._isVip ? 1 : 0) - (a._isVip ? 1 : 0);
+    });
+
     msg.textContent = '';
     others.forEach(function(p) {
+      var vip = p._isVip ? vipInfo(p._tierName) : null;
+
       var card = document.createElement('div');
-      card.className = 'profile-card';
+      card.className = 'profile-card' + (vip ? ' ' + vip.cardClass : '');
 
       var img = document.createElement('img');
       img.src = p.photo_url || 'https://via.placeholder.com/70?text=%F0%9F%92%97';
@@ -85,6 +123,12 @@
       info.className = 'profile-info';
       var name = document.createElement('h3');
       name.textContent = (p.full_name || 'Someone') + (p.age ? ', ' + p.age : '');
+      if (vip) {
+        var badge = document.createElement('span');
+        badge.className = 'vipBadge ' + vip.badgeClass;
+        badge.textContent = p._tierName;
+        name.appendChild(badge);
+      }
       var bio = document.createElement('p');
       bio.textContent = p.bio || '';
       info.appendChild(name);
