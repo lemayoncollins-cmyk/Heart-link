@@ -9,7 +9,7 @@
   body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; padding:20px; box-sizing:border-box; }
   .topBar { display:flex; justify-content:space-between; align-items:center; max-width:400px; margin:0 auto 10px auto; gap:8px; }
   h2 { color:#ff5f8a; margin:0; }
-  .topLinks { display:flex; gap:8px; }
+  .topLinks { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .topLinks a { color:#ff5f8a; font-weight:bold; text-decoration:none; font-size:13px; background:white; padding:8px 12px; border-radius:16px; box-shadow:0 2px 6px rgba(0,0,0,0.06); white-space:nowrap; }
   .grid { display:flex; flex-direction:column; gap:16px; max-width:400px; margin:0 auto; }
   .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); display:flex; gap:12px; align-items:center; position:relative; }
@@ -37,6 +37,7 @@
 <div class="topBar">
   <h2>Discover</h2>
   <div class="topLinks">
+    <a href="profile.html">👤 Profile</a>
     <a href="vip.html">💎 VIP</a>
     <a href="chat.html">💬 Matches</a>
   </div>
