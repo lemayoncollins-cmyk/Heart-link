@@ -46,8 +46,10 @@
 <body>
 <div class="header">
   <span>Chat</span>
-  <div style="display:flex; align-items:center; gap:10px;">
-    <button id="giftBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎁 Gift</button>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <button id="videoCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 10px; border-radius:14px; font-weight:bold; font-size:13px;">📹</button>
+    <button id="voiceCallBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 10px; border-radius:14px; font-weight:bold; font-size:13px;">🎙️</button>
+    <button id="giftBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 10px; border-radius:14px; font-weight:bold; font-size:13px;">🎁</button>
     <span class="coinBadge" id="coinBadge">-- coins</span>
   </div>
 </div>
@@ -74,6 +76,8 @@
   var msgInput = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
   var coinBadge = document.getElementById('coinBadge');
+  var videoCallBtn = document.getElementById('videoCallBtn');
+  var voiceCallBtn = document.getElementById('voiceCallBtn');
   var giftBtn = document.getElementById('giftBtn');
   var giftOverlay = document.getElementById('giftOverlay');
   var giftList = document.getElementById('giftList');
@@ -107,6 +111,22 @@
       coinBadge.textContent = res.data.coins + ' coins';
     }
   }
+
+  videoCallBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    window.location.href = 'call.html?match=' + activeMatchId + '&type=video';
+  });
+
+  voiceCallBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    window.location.href = 'call.html?match=' + activeMatchId + '&type=voice';
+  });
 
   giftBtn.addEventListener('click', function() {
     if (!activeMatchId) {
