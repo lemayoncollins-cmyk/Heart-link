@@ -18,17 +18,51 @@
   .inputRow button { background:#ff5f8a; color:white; border:none; border-radius:20px; padding:0 20px; font-weight:bold; }
   .msg { text-align:center; color:#999; padding:20px; }
   .matchLink { display:block; background:white; margin:8px 16px; padding:14px; border-radius:14px; text-decoration:none; color:#333; font-weight:bold; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+
+  .giftOverlay {
+    position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.6); display:none;
+    align-items:flex-end; justify-content:center; z-index:998;
+  }
+  .giftSheet {
+    background:white; width:100%; max-width:500px; border-radius:20px 20px 0 0;
+    padding:20px; box-sizing:border-box;
+  }
+  .giftSheet h3 { margin:0 0 16px 0; text-align:center; color:#333; }
+  .giftList { display:flex; flex-direction:column; gap:10px; max-height:50vh; overflow-y:auto; }
+  .giftOption {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#fff0f4; border-radius:14px; padding:12px 16px; font-size:15px; color:#333;
+  }
+  .giftOption button {
+    background:#ff5f8a; color:white; border:none; border-radius:16px; padding:8px 16px; font-weight:bold;
+  }
+  .giftCancelBtn {
+    display:block; width:100%; margin-top:16px; background:#eee; color:#333;
+    border:none; border-radius:16px; padding:12px; font-weight:bold;
+  }
 </style>
 </head>
 <body>
 <div class="header">
   <span>Chat</span>
-  <span class="coinBadge" id="coinBadge">-- coins</span>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="giftBtn" style="background:rgba(255,255,255,0.25); border:none; color:white; padding:6px 12px; border-radius:14px; font-weight:bold;">🎁 Gift</button>
+    <span class="coinBadge" id="coinBadge">-- coins</span>
+  </div>
 </div>
 <div class="messages" id="messages"><div class="msg" id="loadingMsg">Starting...</div></div>
 <div class="inputRow" style="display:none;" id="inputRow">
   <input type="text" id="msgInput" placeholder="Type a message...">
   <button id="sendBtn">Send</button>
+</div>
+
+<div class="giftOverlay" id="giftOverlay">
+  <div class="giftSheet">
+    <h3>Send a Gift</h3>
+    <div class="giftList" id="giftList"><div class="msg">Loading gifts...</div></div>
+    <button class="giftCancelBtn" id="giftCancelBtn">Cancel</button>
+  </div>
 </div>
 
 <script>
@@ -40,6 +74,10 @@
   var msgInput = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
   var coinBadge = document.getElementById('coinBadge');
+  var giftBtn = document.getElementById('giftBtn');
+  var giftOverlay = document.getElementById('giftOverlay');
+  var giftList = document.getElementById('giftList');
+  var giftCancelBtn = document.getElementById('giftCancelBtn');
 
   var currentUserId = null;
   var activeMatchId = null;
@@ -69,6 +107,52 @@
       coinBadge.textContent = res.data.coins + ' coins';
     }
   }
+
+  giftBtn.addEventListener('click', function() {
+    if (!activeMatchId) {
+      alert('Open a specific match chat first.');
+      return;
+    }
+    giftOverlay.style.display = 'flex';
+    giftList.innerHTML = '<div class="msg">Loading gifts...</div>';
+
+    supabaseClient.from('gifts').select('*').eq('active', true).order('coin_cost', { ascending: true }).then(function(res) {
+      if (res.error || !res.data || res.data.length === 0) {
+        giftList.innerHTML = '<div class="msg">No gifts available right now.</div>';
+        return;
+      }
+      giftList.innerHTML = '';
+      res.data.forEach(function(g) {
+        var row = document.createElement('div');
+        row.className = 'giftOption';
+        row.innerHTML =
+          '<span>' + g.emoji + ' ' + g.name + ' — ' + g.coin_cost + ' coins</span>' +
+          '<button data-gift-id="' + g.id + '">Send</button>';
+        giftList.appendChild(row);
+      });
+      giftList.querySelectorAll('button').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+          var giftId = btn.getAttribute('data-gift-id');
+          btn.disabled = true;
+          btn.textContent = 'Sending...';
+          var result = await supabaseClient.rpc('send_gift', { p_match_id: activeMatchId, p_gift_id: giftId });
+          if (result.error) {
+            alert('Gift failed: ' + result.error.message);
+            btn.disabled = false;
+            btn.textContent = 'Send';
+            return;
+          }
+          giftOverlay.style.display = 'none';
+          await refreshCoinBadge();
+          loadMessages();
+        });
+      });
+    });
+  });
+
+  giftCancelBtn.addEventListener('click', function() {
+    giftOverlay.style.display = 'none';
+  });
 
   async function init() {
     try {
