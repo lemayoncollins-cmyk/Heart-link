@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Set Up Your Profile</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:linear-gradient(135deg,#ff5f8a,#ff8fab); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:white; border-radius:16px; padding:24px; width:100%; max-width:360px; box-shadow:0 10px 30px rgba(0,0,0,0.2); }
+  h2 { color:#ff5f8a; text-align:center; margin-top:0; }
+  input, select, textarea { width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:8px; box-sizing:border-box; font-family:inherit; }
+  textarea { resize:vertical; min-height:80px; }
+  button[type="submit"] { width:100%; padding:12px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; margin-top:8px; }
+  .msg { text-align:center; margin-top:12px; color:#333; font-size:14px; }
+  label { font-size:13px; color:#666; margin-top:8px; display:block; }
+  .lockedNote { font-size:11px; color:#999; margin-top:-4px; margin-bottom:6px; }
+  #photoPreview img { width:80px; height:80px; border-radius:50%; object-fit:cover; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>Set Up Your Profile</h2>
+
+  <form id="profileForm">
+    <label>Profile Photo</label>
+    <input type="file" id="photoInput" accept="image/*">
+    <div id="photoPreview"></div>
+
+    <label>Full Name</label>
+    <input type="text" id="fullName" required>
+
+    <label>Age</label>
+    <input type="number" id="age" min="18" required>
+    <div class="lockedNote">Note: age can't be changed after this, so make sure it's correct.</div>
+
+    <label>Gender</label>
+    <select id="gender" required>
+      <option value="">Select...</option>
+      <option value="male">Male</option>
+      <option value="female">Female</option>
+      <option value="other">Other</option>
+    </select>
+    <div class="lockedNote">Note: gender can't be changed after this, so make sure it's correct.</div>
+
+    <label>Bio</label>
+    <textarea id="bio" placeholder="Tell others about yourself..."></textarea>
+
+    <button type="submit">Save Profile</button>
+  </form>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var msg = document.getElementById('msg');
+  var form = document.getElementById('profileForm');
+  var photoInput = document.getElementById('photoInput');
+  var photoPreview = document.getElementById('photoPreview');
+
+  photoInput.addEventListener('change', function() {
+    var file = photoInput.files[0];
+    if (file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        photoPreview.innerHTML = '<img src="' + e.target.result + '">';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  supabaseClient.auth.getUser().then(function(res) {
+    if (!res.data.user) {
+      msg.textContent = 'Please log in first.';
+      form.style.display = 'none';
+    }
+  });
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var res = await supabaseClient.auth.getUser();
+    var user = res.data.user;
+    if (!user) { msg.textContent = 'Please log in first.'; return; }
+
+    msg.textContent = 'Saving...';
+
+    var photoUrl = null;
+    var file = photoInput.files[0];
+    if (file) {
+      var filePath = user.id + '-' + Date.now() + '-' + file.name;
+      var uploadResult = await supabaseClient.storage.from('avatars').upload(filePath, file);
+      if (uploadResult.error) {
+        msg.textContent = 'Photo upload failed: ' + uploadResult.error.message;
+        return;
+      }
+      var urlResult = supabaseClient.storage.from('avatars').getPublicUrl(filePath);
+      photoUrl = urlResult.data.publicUrl;
+    }
+
+    var fullName = document.getElementById('fullName').value;
+    var age = document.getElementById('age').value;
+    var gender = document.getElementById('gender').value;
+    var bio = document.getElementById('bio').value;
+
+    var profileData = {
+      id: user.id,
+      full_name: fullName,
+      age: parseInt(age),
+      gender: gender,
+      bio: bio
+    };
+    if (photoUrl) { profileData.photo_url = photoUrl; }
+
+    var res2 = await supabaseClient.from('profiles').upsert(profileData);
+
+    if (res2.error) {
+      msg.textContent = res2.error.message;
+      return;
+    }
+
+    msg.textContent = 'Profile saved! Redirecting...';
+    setTimeout(function() {
+      window.location.href = 'discover.html';
+    }, 800);
+  });
+</script>
+</body>
+</html>
