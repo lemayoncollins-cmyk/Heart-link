@@ -150,17 +150,25 @@
 
         var mutualRes = await supabaseClient.from('likes').select('*').eq('liker_id', p.id).eq('liked_id', currentUserId);
         if (mutualRes.data && mutualRes.data.length > 0) {
-          var matchRes = await supabaseClient
+          var existingMatch = await supabaseClient
             .from('matches')
-            .insert({ user1_id: currentUserId, user2_id: p.id })
-            .select()
-            .single();
+            .select('id')
+            .or('and(user1_id.eq.' + currentUserId + ',user2_id.eq.' + p.id + '),and(user1_id.eq.' + p.id + ',user2_id.eq.' + currentUserId + ')')
+            .maybeSingle();
 
-          if (matchRes.data) {
-            startChatBtn.href = 'chat.html?match=' + matchRes.data.id;
+          var matchId = null;
+          if (existingMatch.data) {
+            matchId = existingMatch.data.id;
           } else {
-            startChatBtn.href = 'chat.html';
+            var matchRes = await supabaseClient
+              .from('matches')
+              .insert({ user1_id: currentUserId, user2_id: p.id })
+              .select()
+              .single();
+            if (matchRes.data) matchId = matchRes.data.id;
           }
+
+          startChatBtn.href = matchId ? 'chat.html?match=' + matchId : 'chat.html';
           document.getElementById('matchPopup').style.display = 'flex';
         }
       });
