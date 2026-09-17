@@ -44,6 +44,14 @@
     return Promise.race([promise, timeout]);
   }
 
+  function describeError(err) {
+    if (!err) return 'Unknown error (no details given)';
+    if (typeof err === 'string') return err;
+    if (err.message) return err.message;
+    if (err.errorMsg) return err.errorMsg;
+    try { return JSON.stringify(err); } catch (e) { return 'Unknown error'; }
+  }
+
   var matchId = getParam('match');
   var inviteId = getParam('invite');
   var callType = getParam('type') || 'video';
@@ -62,7 +70,16 @@
     landing.style.display = 'none';
     callFrame.style.display = 'block';
 
+    if (!window.DailyIframe) {
+      throw new Error('Video call library failed to load. Check your internet connection and try again.');
+    }
+
     var callFrameInstance = window.DailyIframe.wrap(callFrame, { showLeaveButton: true });
+
+    callFrameInstance.on('error', function(e) {
+      console.log('Daily error event:', e);
+    });
+
     await withTimeout(
       callFrameInstance.join({
         url: roomUrl,
@@ -81,11 +98,15 @@
       msg.textContent = 'This call is no longer available.';
       return;
     }
-    joinRoom(res.data.call_room_url, res.data.call_type || 'video').catch(function(err) {
+    try {
+      await joinRoom(res.data.call_room_url, res.data.call_type || 'video');
+    } catch (err) {
+      console.log('Join error (receiver):', err);
       landing.style.display = 'block';
       callFrame.style.display = 'none';
-      msg.textContent = 'Error: ' + err.message;
-    });
+      msg.textContent = 'Error: ' + describeError(err);
+      startBtn.style.display = 'block';
+    }
   }
 
   // CALLER FLOW: normal ?match=<id>&type=video|voice, tapping Start Call
@@ -200,7 +221,8 @@
       };
 
     } catch (err) {
-      msg.textContent = 'Error: ' + err.message;
+      console.log('Start call error:', err);
+      msg.textContent = 'Error: ' + describeError(err);
       startBtn.style.display = 'block';
     }
   });
@@ -215,9 +237,11 @@
       cleanupRing();
       cancelBtn.style.display = 'none';
       joinRoom(roomUrl, invite.call_type || 'video').catch(function(err) {
+        console.log('Join error (caller):', err);
         landing.style.display = 'block';
         callFrame.style.display = 'none';
-        msg.textContent = 'Error: ' + err.message;
+        msg.textContent = 'Error: ' + describeError(err);
+        startBtn.style.display = 'block';
       });
     } else if (invite.status === 'declined') {
       cleanupRing();
