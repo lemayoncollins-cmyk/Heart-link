@@ -144,34 +144,31 @@
 
       var match = matchRes.data;
       var otherUserId = match.user1_id === currentUserId ? match.user2_id : match.user1_id;
-      var roomUrl = match.call_room_url;
 
-      if (!roomUrl) {
-        msg.textContent = 'Creating call room...';
-        var res = await withTimeout(
-          fetch('/.netlify/functions/create-call-room', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matchId: matchId })
-          }),
-          10000, 'Room creation'
-        );
+      msg.textContent = 'Creating call room...';
+      var res = await withTimeout(
+        fetch('/.netlify/functions/create-call-room', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchId: matchId })
+        }),
+        10000, 'Room creation'
+      );
 
-        var data = await res.json();
+      var data = await res.json();
 
-        if (!res.ok || !data.url) {
-          msg.textContent = 'Could not start the call: ' + (data.error || 'unknown error');
-          startBtn.style.display = 'block';
-          return;
-        }
-
-        roomUrl = data.url;
-
-        await supabaseClient
-          .from('matches')
-          .update({ call_room_url: roomUrl })
-          .eq('id', matchId);
+      if (!res.ok || !data.url) {
+        msg.textContent = 'Could not start the call: ' + (data.error || 'unknown error');
+        startBtn.style.display = 'block';
+        return;
       }
+
+      var roomUrl = data.url;
+
+      await supabaseClient
+        .from('matches')
+        .update({ call_room_url: roomUrl })
+        .eq('id', matchId);
 
       var inviteRes = await supabaseClient.from('call_invites').insert({
         match_id: matchId,
