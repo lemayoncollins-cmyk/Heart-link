@@ -11,15 +11,17 @@
   h2 { color:#ff5f8a; text-align:center; margin-top:0; }
   input, select, textarea { width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:8px; box-sizing:border-box; font-family:inherit; }
   textarea { resize:vertical; min-height:80px; }
+  input:disabled, select:disabled { background:#f2f2f2; color:#888; }
   button[type="submit"] { width:100%; padding:12px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; margin-top:8px; }
   .msg { text-align:center; margin-top:12px; color:#333; font-size:14px; }
   label { font-size:13px; color:#666; margin-top:8px; display:block; }
+  .lockedNote { font-size:11px; color:#999; margin-top:-4px; margin-bottom:6px; }
   #photoPreview img { width:80px; height:80px; border-radius:50%; object-fit:cover; margin-top:8px; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h2>Set Up Your Profile</h2>
+  <h2>Your Profile</h2>
 
   <form id="profileForm">
     <label>Profile Photo</label>
@@ -30,15 +32,17 @@
     <input type="text" id="fullName" required>
 
     <label>Age</label>
-    <input type="number" id="age" min="18" required>
+    <input type="number" id="age" disabled>
+    <div class="lockedNote">Age can't be changed after signup. Contact support if this is wrong.</div>
 
     <label>Gender</label>
-    <select id="gender" required>
+    <select id="gender" disabled>
       <option value="">Select...</option>
       <option value="male">Male</option>
       <option value="female">Female</option>
       <option value="other">Other</option>
     </select>
+    <div class="lockedNote">Gender can't be changed after signup. Contact support if this is wrong.</div>
 
     <label>Bio</label>
     <textarea id="bio" placeholder="Tell others about yourself..."></textarea>
@@ -57,6 +61,12 @@
   var form = document.getElementById('profileForm');
   var photoInput = document.getElementById('photoInput');
   var photoPreview = document.getElementById('photoPreview');
+  var fullNameInput = document.getElementById('fullName');
+  var ageInput = document.getElementById('age');
+  var genderInput = document.getElementById('gender');
+  var bioInput = document.getElementById('bio');
+
+  var currentUserId = null;
 
   photoInput.addEventListener('change', function() {
     var file = photoInput.files[0];
@@ -69,25 +79,41 @@
     }
   });
 
-  supabaseClient.auth.getUser().then(function(res) {
-    if (!res.data.user) {
+  async function loadExistingProfile() {
+    var res = await supabaseClient.from('profiles').select('*').eq('id', currentUserId).single();
+    if (res.data) {
+      fullNameInput.value = res.data.full_name || '';
+      ageInput.value = res.data.age || '';
+      genderInput.value = res.data.gender || '';
+      bioInput.value = res.data.bio || '';
+      if (res.data.photo_url) {
+        photoPreview.innerHTML = '<img src="' + res.data.photo_url + '">';
+      }
+    }
+  }
+
+  async function init() {
+    var res = await supabaseClient.auth.getUser();
+    var user = res.data.user;
+    if (!user) {
       msg.textContent = 'Please log in first.';
       form.style.display = 'none';
+      return;
     }
-  });
+    currentUserId = user.id;
+    await loadExistingProfile();
+  }
 
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
-    var res = await supabaseClient.auth.getUser();
-    var user = res.data.user;
-    if (!user) { msg.textContent = 'Please log in first.'; return; }
+    if (!currentUserId) { msg.textContent = 'Please log in first.'; return; }
 
     msg.textContent = 'Saving...';
 
     var photoUrl = null;
     var file = photoInput.files[0];
     if (file) {
-      var filePath = user.id + '-' + Date.now() + '-' + file.name;
+      var filePath = currentUserId + '-' + Date.now() + '-' + file.name;
       var uploadResult = await supabaseClient.storage.from('avatars').upload(filePath, file);
       if (uploadResult.error) {
         msg.textContent = 'Photo upload failed: ' + uploadResult.error.message;
@@ -97,17 +123,10 @@
       photoUrl = urlResult.data.publicUrl;
     }
 
-    var fullName = document.getElementById('fullName').value;
-    var age = document.getElementById('age').value;
-    var gender = document.getElementById('gender').value;
-    var bio = document.getElementById('bio').value;
-
     var updateData = {
-      id: user.id,
-      full_name: fullName,
-      age: parseInt(age),
-      gender: gender,
-      bio: bio
+      id: currentUserId,
+      full_name: fullNameInput.value,
+      bio: bioInput.value
     };
     if (photoUrl) { updateData.photo_url = photoUrl; }
 
@@ -123,6 +142,8 @@
       window.location.href = 'discover.html';
     }, 800);
   });
+
+  init();
 </script>
 </body>
 </html>
