@@ -191,7 +191,6 @@
           }
           giftOverlay.style.display = 'none';
           await refreshCoinBadge();
-          loadMessages();
         });
       });
     });
@@ -242,6 +241,32 @@
         .subscribe();
     } catch (err) {
       console.log('Realtime call listener failed to start:', err.message);
+    }
+  }
+
+  function appendMessageBubble(m) {
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble ' + (m.sender_id === currentUserId ? 'mine' : 'theirs');
+    bubble.textContent = m.content;
+    messagesDiv.appendChild(bubble);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function listenForMessages() {
+    try {
+      supabaseClient
+        .channel('messages_' + activeMatchId)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: 'match_id=eq.' + activeMatchId
+        }, function(payload) {
+          appendMessageBubble(payload.new);
+        })
+        .subscribe();
+    } catch (err) {
+      console.log('Realtime message listener failed to start:', err.message);
     }
   }
 
@@ -299,6 +324,7 @@
         inputRow.style.display = 'flex';
         setStatus('Loading messages...');
         await loadMessages();
+        listenForMessages();
       }
 
       // Start the realtime call listener LAST, after everything else has loaded,
@@ -321,12 +347,8 @@
       return;
     }
     res.data.forEach(function(m) {
-      var bubble = document.createElement('div');
-      bubble.className = 'bubble ' + (m.sender_id === currentUserId ? 'mine' : 'theirs');
-      bubble.textContent = m.content;
-      messagesDiv.appendChild(bubble);
+      appendMessageBubble(m);
     });
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   }
 
   sendBtn.addEventListener('click', async function() {
@@ -341,7 +363,6 @@
     }
 
     await refreshCoinBadge();
-    loadMessages();
   });
 
   msgInput.addEventListener('keydown', function(e) {
