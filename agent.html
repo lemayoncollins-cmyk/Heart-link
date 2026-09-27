@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heart Link - Agent Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { margin:0; font-family:-apple-system,sans-serif; background:#fff0f4; min-height:100vh; padding:20px; box-sizing:border-box; }
+  h2 { color:#ff5f8a; text-align:center; }
+  .card { background:white; border-radius:16px; padding:18px; max-width:400px; margin:0 auto 16px auto; box-shadow:0 4px 12px rgba(0,0,0,0.06); }
+  .linkBox { background:#fff0f4; border-radius:10px; padding:12px; font-size:13px; word-break:break-all; color:#333; margin-top:8px; }
+  .copyBtn { background:#ff5f8a; color:white; border:none; border-radius:16px; padding:8px 16px; font-weight:bold; margin-top:10px; }
+  .statsRow { display:flex; gap:10px; }
+  .statCard { flex:1; background:white; border-radius:14px; padding:14px; text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.06); }
+  .statCard .val { font-size:20px; font-weight:bold; color:#ff5f8a; }
+  .statCard .lbl { font-size:12px; color:#888; }
+  .msg { text-align:center; color:#999; padding:20px; }
+  .referredRow { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:13px; }
+  .referredRow:last-child { border-bottom:none; }
+</style>
+</head>
+<body>
+<h2>🤝 Agent Dashboard</h2>
+
+<div id="content"><div class="msg">Loading...</div></div>
+
+<script>
+  var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
+  var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
+  var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var content = document.getElementById('content');
+
+  async function init() {
+    var userRes = await supabaseClient.auth.getUser();
+    var user = userRes.data.user;
+    if (!user) {
+      content.innerHTML = '<div class="msg">Please log in first.</div>';
+      return;
+    }
+
+    var profileRes = await supabaseClient.from('profiles').select('*').eq('id', user.id).single();
+    if (!profileRes.data || !profileRes.data.is_agent) {
+      content.innerHTML = '<div class="msg">This page is only for approved agents.</div>';
+      return;
+    }
+
+    var referralLink = window.location.origin + '/auth.html?mode=signup&ref=' + profileRes.data.referral_code;
+
+    var referredRes = await supabaseClient.from('profiles').select('id, full_name, coins').eq('referred_by', user.id);
+    var referredCount = referredRes.data ? referredRes.data.length : 0;
+
+    var earningsRes = await supabaseClient.from('transactions').select('amount').eq('user_id', user.id).eq('type', 'referral_earning');
+    var totalEarnings = 0;
+    if (earningsRes.data) {
+      earningsRes.data.forEach(function(t) { totalEarnings += t.amount; });
+    }
+
+    var html =
+      '<div class="statsRow">' +
+        '<div class="statCard"><div class="val">' + referredCount + '</div><div class="lbl">Women Invited</div></div>' +
+        '<div class="statCard"><div class="val">' + totalEarnings + '</div><div class="lbl">Coins Earned</div></div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<strong>Your referral link</strong>' +
+        '<div class="linkBox" id="linkBox">' + referralLink + '</div>' +
+        '<button class="copyBtn" id="copyBtn">Copy Link</button>' +
+      '</div>' +
+      '<div class="card">' +
+        '<strong>Women You\'ve Invited</strong>';
+
+    if (referredRes.data && referredRes.data.length > 0) {
+      referredRes.data.forEach(function(r) {
+        html += '<div class="referredRow"><span>' + (r.full_name || 'Someone') + '</span><span>' + (r.coins || 0) + ' coins</span></div>';
+      });
+    } else {
+      html += '<div class="msg">No one yet — share your link!</div>';
+    }
+
+    html += '</div>';
+
+    content.innerHTML = html;
+
+    document.getElementById('copyBtn').addEventListener('click', function() {
+      navigator.clipboard.writeText(referralLink).then(function() {
+        document.getElementById('copyBtn').textContent = 'Copied!';
+        setTimeout(function() { document.getElementById('copyBtn').textContent = 'Copy Link'; }, 2000);
+      });
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
