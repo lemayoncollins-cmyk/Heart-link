@@ -72,6 +72,13 @@
   var communities = [];
   var activeCommunityId = null;
 
+  function withTimeout(promise, ms, label) {
+    var timeout = new Promise(function(_, reject) {
+      setTimeout(function() { reject(new Error(label + ' timed out')); }, ms);
+    });
+    return Promise.race([promise, timeout]);
+  }
+
   async function uploadPostImage(file) {
     var filePath = 'posts/' + currentUserId + '-' + Date.now() + '-' + file.name;
     var uploadResult = await supabaseClient.storage.from('avatars').upload(filePath, file);
@@ -177,8 +184,196 @@
     if (!activeCommunityId) return;
     feed.innerHTML = '<div class="msg">Loading feed...</div>';
 
-    var postsRes = await supabaseClient
-      .from('community_posts')
-      .select('*, profiles(full_name, photo_url)')
-      .eq('community_id', activeCommunityId)
-      .order('created_at', { ascend
+    try {
+      var postsRes = await withTimeout(
+        supabaseClient
+          .from('community_posts')
+          .select('*, profiles(full_name, photo_url)')
+          .eq('community_id', activeCommunityId)
+          .order('created_at', { ascending: true })
+          .limit(50),
+        8000, 'Posts lookup'
+      );
+
+      if (postsRes.error || !postsRes.data) {
+        feed.innerHTML = '<div class="msg">Error loading feed.</div>';
+        return;
+      }
+
+      if (postsRes.data.length === 0) {
+        feed.innerHTML = '<div class="msg">No posts yet in this community. Be the first to share something!</div>';
+        return;
+      }
+
+      var postIds = postsRes.data.map(function(p) { return p.id; });
+
+      var likesRes = await withTimeout(
+        supabaseClient.from('community_likes').select('post_id, user_id').in('post_id', postIds),
+        8000, 'Likes lookup'
+      );
+      var likeCounts = {};
+      var likedByMeSet = {};
+      if (likesRes.data) {
+        likesRes.data.forEach(function(l) {
+          likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1;
+          if (l.user_id === currentUserId) likedByMeSet[l.post_id] = true;
+        });
+      }
+
+      feed.innerHTML = '';
+      postsRes.data.forEach(function(post) {
+        var card = renderPost(post, likeCounts[post.id] || 0, !!likedByMeSet[post.id]);
+        feed.appendChild(card);
+      });
+
+      attachFeedListeners();
+    } catch (err) {
+      feed.innerHTML = '<div class="msg">Error: ' + err.message + '</div>';
+    }
+  }
+
+  function attachFeedListeners() {
+    feed.querySelectorAll('.likeBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var postId = btn.getAttribute('data-post-id');
+        var isLiked = btn.classList.contains('liked');
+
+        if (isLiked) {
+          await supabaseClient.from('community_likes').delete().eq('post_id', postId).eq('user_id', currentUserId);
+        } else {
+          await supabaseClient.from('community_likes').insert({ post_id: postId, user_id: currentUserId });
+        }
+
+        var countSpan = btn.querySelector('.likeCount');
+        var currentCount = parseInt(countSpan.textContent, 10);
+        countSpan.textContent = isLiked ? currentCount - 1 : currentCount + 1;
+        btn.classList.toggle('liked');
+      });
+    });
+
+    feed.querySelectorAll('.commentToggleBtn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var postId = btn.getAttribute('data-post-id');
+        var commentsDiv = document.getElementById('comments-' + postId);
+        var isVisible = commentsDiv.style.display === 'block';
+        commentsDiv.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible) loadComments(postId);
+      });
+    });
+
+    feed.querySelectorAll('.messageBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var otherUserId = btn.getAttribute('data-user-id');
+        btn.disabled = true;
+        btn.textContent = 'Opening...';
+
+        var result = await supabaseClient.rpc('get_or_create_match', { p_other_user_id: otherUserId });
+
+        if (result.error || !result.data) {
+          alert('Could not open chat: ' + (result.error ? result.error.message : 'unknown error'));
+          btn.disabled = false;
+          btn.textContent = '💌 Message';
+          return;
+        }
+
+        window.location.href = 'chat.html?match=' + result.data;
+      });
+    });
+  }
+
+  async function loadComments(postId) {
+    var commentsDiv = document.getElementById('comments-' + postId);
+    var res = await supabaseClient
+      .from('community_comments')
+      .select('*, profiles(full_name)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+
+    if (!res.data) {
+      commentsDiv.innerHTML = '<div class="msg">Error loading comments.</div>';
+      return;
+    }
+
+    var html = '';
+    res.data.forEach(function(c) {
+      var name = c.profiles ? (c.profiles.full_name || 'Someone') : 'Someone';
+      html += '<div class="comment"><strong>' + name + ':</strong> ' + escapeHtml(c.content) + '</div>';
+    });
+
+    html +=
+      '<div class="commentInputRow">' +
+        '<input type="text" class="newCommentInput" data-post-id="' + postId + '" placeholder="Write a comment...">' +
+        '<button class="submitCommentBtn" data-post-id="' + postId + '">Send</button>' +
+      '</div>';
+
+    commentsDiv.innerHTML = html;
+
+    var submitBtn = commentsDiv.querySelector('.submitCommentBtn');
+    var input = commentsDiv.querySelector('.newCommentInput');
+
+    submitBtn.addEventListener('click', async function() {
+      var text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      var result = await supabaseClient.from('community_comments').insert({
+        post_id: postId,
+        user_id: currentUserId,
+        content: text
+      });
+
+      if (!result.error) {
+        loadComments(postId);
+      }
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') submitBtn.click();
+    });
+  }
+
+  async function init() {
+    try {
+      tabBar.innerHTML = '<div class="msg">Checking login...</div>';
+      var userRes = await withTimeout(supabaseClient.auth.getUser(), 8000, 'Login check');
+      var user = userRes.data.user;
+      if (!user) {
+        feed.innerHTML = '<div class="msg">Please log in first.</div>';
+        tabBar.innerHTML = '';
+        return;
+      }
+      currentUserId = user.id;
+
+      tabBar.innerHTML = '<div class="msg">Loading communities...</div>';
+      var communitiesRes = await withTimeout(
+        supabaseClient
+          .from('communities')
+          .select('*')
+          .eq('active', true)
+          .order('sort_order', { ascending: true }),
+        8000, 'Communities lookup'
+      );
+
+      if (!communitiesRes.data || communitiesRes.data.length === 0) {
+        tabBar.innerHTML = '<div class="msg">No communities available.</div>';
+        feed.innerHTML = '';
+        return;
+      }
+
+      communities = communitiesRes.data;
+      activeCommunityId = communities[0].id;
+      activeCommunityName.textContent = communities[0].name;
+
+      renderTabs();
+      await loadFeed();
+
+    } catch (err) {
+      tabBar.innerHTML = '<div class="msg">Error: ' + err.message + '</div>';
+      feed.innerHTML = '';
+    }
+  }
+
+  init();
+</script>
+</body>
+  </html>
