@@ -10,10 +10,14 @@
   .header { background:#ff5f8a; color:white; padding:16px; display:flex; justify-content:space-between; align-items:center; }
   .header h2 { margin:0; }
   .topLinks a { color:white; font-weight:bold; text-decoration:none; font-size:13px; background:rgba(255,255,255,0.25); padding:6px 12px; border-radius:14px; }
+  .tabBar { display:flex; gap:8px; overflow-x:auto; padding:12px 16px; background:white; box-shadow:0 2px 6px rgba(0,0,0,0.04); }
+  .tabBtn { flex-shrink:0; background:#fff0f4; color:#ff5f8a; border:none; padding:8px 14px; border-radius:16px; font-weight:bold; font-size:13px; white-space:nowrap; }
+  .tabBtn.active { background:#ff5f8a; color:white; }
   .composer { background:white; margin:16px; border-radius:14px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
   .composer textarea { width:100%; border:1px solid #ddd; border-radius:10px; padding:10px; box-sizing:border-box; font-family:inherit; resize:vertical; min-height:60px; }
   .composer .composerRow { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
   .composer button { background:#ff5f8a; color:white; border:none; padding:10px 18px; border-radius:18px; font-weight:bold; }
+  .composerNote { font-size:12px; color:#999; margin-bottom:6px; }
   .post { background:white; margin:0 16px 16px 16px; border-radius:14px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
   .postHeader { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .postHeader img { width:40px; height:40px; border-radius:50%; object-fit:cover; background:#eee; }
@@ -39,7 +43,10 @@
   <div class="topLinks"><a href="discover.html">💗 Discover</a></div>
 </div>
 
+<div class="tabBar" id="tabBar"><div class="msg">Loading communities...</div></div>
+
 <div class="composer">
+  <div class="composerNote">Posting in: <span id="activeCommunityName">...</span></div>
   <textarea id="postContent" placeholder="Share something with the community..."></textarea>
   <div class="composerRow">
     <input type="file" id="postImageInput" accept="image/*" style="font-size:12px;">
@@ -54,12 +61,16 @@
   var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
   var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+  var tabBar = document.getElementById('tabBar');
   var feed = document.getElementById('feed');
   var postContentInput = document.getElementById('postContent');
   var postImageInput = document.getElementById('postImageInput');
   var postBtn = document.getElementById('postBtn');
+  var activeCommunityName = document.getElementById('activeCommunityName');
 
   var currentUserId = null;
+  var communities = [];
+  var activeCommunityId = null;
 
   async function uploadPostImage(file) {
     var filePath = 'posts/' + currentUserId + '-' + Date.now() + '-' + file.name;
@@ -73,6 +84,7 @@
     var content = postContentInput.value.trim();
     var file = postImageInput.files[0];
     if (!content && !file) return;
+    if (!activeCommunityId) return;
 
     postBtn.disabled = true;
     postBtn.textContent = 'Posting...';
@@ -85,7 +97,8 @@
     var result = await supabaseClient.from('community_posts').insert({
       user_id: currentUserId,
       content: content,
-      image_url: imageUrl
+      image_url: imageUrl,
+      community_id: activeCommunityId
     });
 
     postBtn.disabled = false;
@@ -100,6 +113,22 @@
     postImageInput.value = '';
     loadFeed();
   });
+
+  function renderTabs() {
+    tabBar.innerHTML = '';
+    communities.forEach(function(c) {
+      var btn = document.createElement('button');
+      btn.className = 'tabBtn' + (c.id === activeCommunityId ? ' active' : '');
+      btn.textContent = c.name;
+      btn.addEventListener('click', function() {
+        activeCommunityId = c.id;
+        activeCommunityName.textContent = c.name;
+        renderTabs();
+        loadFeed();
+      });
+      tabBar.appendChild(btn);
+    });
+  }
 
   function renderPost(post, likeCount, likedByMe) {
     var card = document.createElement('div');
@@ -145,9 +174,13 @@
   }
 
   async function loadFeed() {
+    if (!activeCommunityId) return;
+    feed.innerHTML = '<div class="msg">Loading feed...</div>';
+
     var postsRes = await supabaseClient
       .from('community_posts')
       .select('*, profiles(full_name, photo_url)')
+      .eq('community_id', activeCommunityId)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -157,7 +190,7 @@
     }
 
     if (postsRes.data.length === 0) {
-      feed.innerHTML = '<div class="msg">No posts yet. Be the first to share something!</div>';
+      feed.innerHTML = '<div class="msg">No posts yet in this community. Be the first to share something!</div>';
       return;
     }
 
@@ -287,13 +320,32 @@
     var user = userRes.data.user;
     if (!user) {
       feed.innerHTML = '<div class="msg">Please log in first.</div>';
+      tabBar.innerHTML = '';
       return;
     }
     currentUserId = user.id;
+
+    var communitiesRes = await supabaseClient
+      .from('communities')
+      .select('*')
+      .eq('active', true)
+      .order('sort_order', { ascending: true });
+
+    if (!communitiesRes.data || communitiesRes.data.length === 0) {
+      tabBar.innerHTML = '<div class="msg">No communities available.</div>';
+      feed.innerHTML = '';
+      return;
+    }
+
+    communities = communitiesRes.data;
+    activeCommunityId = communities[0].id;
+    activeCommunityName.textContent = communities[0].name;
+
+    renderTabs();
     await loadFeed();
   }
 
   init();
 </script>
 </body>
-                   </html>
+</html>
