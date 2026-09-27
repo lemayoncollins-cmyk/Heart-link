@@ -21,8 +21,6 @@
   .status-pending { background:#fff3cd; color:#856404; }
   .status-paid { background:#d4edda; color:#155724; }
   .msg { text-align:center; color:#999; padding:20px; }
-  .userRow { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:13px; }
-  .userRow:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -41,7 +39,7 @@
 
 <div class="section">
   <h3>All Users</h3>
-  <div class="card" id="usersCard"><div class="msg">Loading...</div></div>
+  <div id="usersCard"><div class="msg">Loading...</div></div>
 </div>
 
 <script>
@@ -55,6 +53,25 @@
   var withdrawalsList = document.getElementById('withdrawalsList');
   var usersCard = document.getElementById('usersCard');
 
+  async function makeAgent(userId) {
+    var code = 'AGENT' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    var result = await supabaseClient.from('profiles').update({ is_agent: true, referral_code: code }).eq('id', userId);
+    if (result.error) {
+      alert('Failed: ' + result.error.message);
+      return;
+    }
+    loadStatsAndUsers();
+  }
+
+  async function removeAgent(userId) {
+    var result = await supabaseClient.from('profiles').update({ is_agent: false }).eq('id', userId);
+    if (result.error) {
+      alert('Failed: ' + result.error.message);
+      return;
+    }
+    loadStatsAndUsers();
+  }
+
   async function loadStatsAndUsers() {
     var profilesRes = await supabaseClient.from('profiles').select('*');
     if (!profilesRes.data) {
@@ -66,9 +83,37 @@
     totalUsers.textContent = users.length;
     totalCoins.textContent = users.reduce(function(sum, u) { return sum + (u.coins || 0); }, 0);
 
-    usersCard.innerHTML = users.map(function(u) {
-      return '<div class="userRow"><span>' + (u.full_name || 'Unnamed') + (u.is_admin ? ' 👑' : '') + '</span><span>' + (u.coins || 0) + ' coins</span></div>';
-    }).join('');
+    usersCard.innerHTML = '';
+    users.forEach(function(u) {
+      var row = document.createElement('div');
+      row.className = 'card';
+      var isFemale = u.gender === 'female';
+      var agentBtnHtml = '';
+
+      if (isFemale) {
+        if (u.is_agent) {
+          agentBtnHtml =
+            '<div style="font-size:12px; color:#2ecc71; margin-top:6px;">✅ Agent · Code: ' + u.referral_code + '</div>' +
+            '<button class="removeAgentBtn" data-id="' + u.id + '" style="margin-top:6px; background:#e74c3c; color:white; border:none; border-radius:14px; padding:6px 12px; font-size:12px;">Remove Agent Status</button>';
+        } else {
+          agentBtnHtml =
+            '<button class="makeAgentBtn" data-id="' + u.id + '" style="margin-top:6px; background:#2ecc71; color:white; border:none; border-radius:14px; padding:6px 12px; font-size:12px;">Make Agent</button>';
+        }
+      }
+
+      row.innerHTML =
+        '<div class="row"><span>' + (u.full_name || 'Unnamed') + (u.is_admin ? ' 👑' : '') + '</span><span>' + (u.coins || 0) + ' coins</span></div>' +
+        agentBtnHtml;
+
+      usersCard.appendChild(row);
+    });
+
+    usersCard.querySelectorAll('.makeAgentBtn').forEach(function(btn) {
+      btn.addEventListener('click', function() { makeAgent(btn.getAttribute('data-id')); });
+    });
+    usersCard.querySelectorAll('.removeAgentBtn').forEach(function(btn) {
+      btn.addEventListener('click', function() { removeAgent(btn.getAttribute('data-id')); });
+    });
   }
 
   async function loadWithdrawals() {
@@ -147,4 +192,4 @@
   init();
 </script>
 </body>
-  </html>
+</html>
