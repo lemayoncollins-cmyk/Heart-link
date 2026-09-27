@@ -79,11 +79,21 @@
     if (!supabaseClient) { msg.textContent = 'Not connected yet - refresh the page.'; return; }
     var email = document.getElementById('signupEmail').value;
     var password = document.getElementById('signupPassword').value;
-    supabaseClient.auth.signUp({ email: email, password: password }).then(function(res) {
+    var refCode = params.get('ref');
+
+    supabaseClient.auth.signUp({ email: email, password: password }).then(async function(res) {
       if (res.error) {
         msg.textContent = res.error.message;
         return;
       }
+
+      if (refCode && res.data.user) {
+        var agentRes = await supabaseClient.from('profiles').select('id').eq('referral_code', refCode).single();
+        if (agentRes.data) {
+          await supabaseClient.from('profiles').update({ referred_by: agentRes.data.id }).eq('id', res.data.user.id);
+        }
+      }
+
       msg.textContent = 'Account created! Redirecting...';
       setTimeout(function() { window.location.href = 'setup-profile.html'; }, 1000);
     });
