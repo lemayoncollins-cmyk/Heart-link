@@ -226,6 +226,26 @@
     hideIncomingCall();
   });
 
+  function listenForCoinChanges() {
+    try {
+      supabaseClient
+        .channel('coin_updates_' + currentUserId)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: 'id=eq.' + currentUserId
+        }, function(payload) {
+          if (payload.new.coins != null) {
+            coinBadge.textContent = payload.new.coins + ' coins';
+          }
+        })
+        .subscribe();
+    } catch (err) {
+      console.log('Realtime coin listener failed to start:', err.message);
+    }
+  }
+
   function listenForCalls() {
     try {
       supabaseClient
@@ -327,9 +347,10 @@
         listenForMessages();
       }
 
-      // Start the realtime call listener LAST, after everything else has loaded,
-      // so it can never block the page even if it hangs or fails.
+      // Start realtime listeners LAST, after everything else has loaded,
+      // so they can never block the page even if they hang or fail.
       listenForCalls();
+      listenForCoinChanges();
 
     } catch (err) {
       setStatus('Error: ' + err.message);
