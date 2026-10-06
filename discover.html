@@ -12,11 +12,15 @@
   .topLinks { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .topLinks a { color:#ff5f8a; font-weight:bold; text-decoration:none; font-size:13px; background:white; padding:8px 12px; border-radius:16px; box-shadow:0 2px 6px rgba(0,0,0,0.06); white-space:nowrap; }
   .grid { display:flex; flex-direction:column; gap:16px; max-width:400px; margin:0 auto; }
-  .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); display:flex; gap:12px; align-items:center; position:relative; }
+  .profile-card { background:white; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); position:relative; }
   .profile-card.vip-gold { border:2px solid #ffd700; }
   .profile-card.vip-silver { border:2px solid #c0c0c0; }
   .profile-card.vip-bronze { border:2px solid #cd7f32; }
-  .profile-card img { width:70px; height:70px; border-radius:50%; object-fit:cover; background:#eee; }
+  .cardTop { display:flex; gap:12px; align-items:center; }
+  .photoWrap { position:relative; flex-shrink:0; }
+  .photoWrap img { width:70px; height:70px; border-radius:50%; object-fit:cover; background:#eee; display:block; }
+  .onlineDot { position:absolute; bottom:2px; right:2px; width:14px; height:14px; border-radius:50%; background:#ccc; border:2px solid white; }
+  .onlineDot.online { background:#2ecc71; }
   .profile-info { flex:1; }
   .profile-info h3 { margin:0 0 4px 0; color:#333; font-size:17px; display:flex; align-items:center; gap:6px; }
   .profile-info p { margin:0; color:#777; font-size:13px; }
@@ -24,13 +28,23 @@
   .badge-gold { background:#d4af00; }
   .badge-silver { background:#999; }
   .badge-bronze { background:#a15c2e; }
-  .like-btn { background:#ff5f8a; color:white; border:none; border-radius:50%; width:44px; height:44px; font-size:20px; }
+  .like-btn { background:#ff5f8a; color:white; border:none; border-radius:50%; width:44px; height:44px; font-size:20px; flex-shrink:0; }
+  .cardActions { display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0; }
+  .cardActions button { background:none; border:none; color:#999; font-size:12px; font-weight:bold; }
+  .cardActions .blockBtn { color:#e74c3c; }
   .msg { text-align:center; margin-top:20px; color:#999; }
   .match-popup { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:99; }
   .match-box { background:white; border-radius:20px; padding:32px 24px; text-align:center; max-width:300px; }
   .match-box h1 { color:#ff5f8a; margin-top:0; }
   .match-box .chatBtn { display:block; margin-top:16px; padding:12px 24px; background:#ff5f8a; color:white; border:none; border-radius:8px; font-weight:bold; text-decoration:none; }
   .match-box .laterBtn { display:block; margin-top:10px; padding:10px 24px; background:#eee; color:#555; border:none; border-radius:8px; font-weight:bold; width:100%; box-sizing:border-box; }
+  .reportOverlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:99; padding:20px; }
+  .reportBox { background:white; border-radius:16px; padding:20px; max-width:320px; width:100%; }
+  .reportBox h3 { margin-top:0; color:#333; }
+  .reportBox textarea { width:100%; border:1px solid #ddd; border-radius:8px; padding:10px; box-sizing:border-box; font-family:inherit; min-height:80px; }
+  .reportBox button { width:100%; padding:10px; border:none; border-radius:8px; font-weight:bold; margin-top:8px; }
+  .reportBox .submitReportBtn { background:#ff5f8a; color:white; }
+  .reportBox .cancelReportBtn { background:#eee; color:#555; }
 </style>
 </head>
 <body>
@@ -56,6 +70,15 @@
   </div>
 </div>
 
+<div class="reportOverlay" id="reportOverlay">
+  <div class="reportBox">
+    <h3>Report this user</h3>
+    <textarea id="reportReason" placeholder="What's the issue?"></textarea>
+    <button class="submitReportBtn" id="submitReportBtn">Submit Report</button>
+    <button class="cancelReportBtn" id="cancelReportBtn">Cancel</button>
+  </div>
+</div>
+
 <script>
   var supabaseUrl = 'https://hqwqodmrnplswieprhms.supabase.co';
   var supabaseKey = 'sb_publishable_Wza9AqCngRXI-6GjMO6r2g_yNBJx6rY';
@@ -63,7 +86,13 @@
   var grid = document.getElementById('grid');
   var msg = document.getElementById('msg');
   var startChatBtn = document.getElementById('startChatBtn');
+  var reportOverlay = document.getElementById('reportOverlay');
+  var reportReason = document.getElementById('reportReason');
+  var submitReportBtn = document.getElementById('submitReportBtn');
+  var cancelReportBtn = document.getElementById('cancelReportBtn');
+
   var currentUserId = null;
+  var reportTargetId = null;
 
   function vipInfo(tierName) {
     if (!tierName) return null;
@@ -74,6 +103,53 @@
     return { cardClass: '', badgeClass: 'badge-bronze' };
   }
 
+  function isOnline(lastSeen) {
+    if (!lastSeen) return false;
+    var diffMs = new Date() - new Date(lastSeen);
+    return diffMs < 5 * 60 * 1000; // online if active in last 5 minutes
+  }
+
+  function startHeartbeat() {
+    function beat() {
+      supabaseClient.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', currentUserId).then(function() {});
+    }
+    beat();
+    setInterval(beat, 60000);
+  }
+
+  cancelReportBtn.addEventListener('click', function() {
+    reportOverlay.style.display = 'none';
+    reportReason.value = '';
+    reportTargetId = null;
+  });
+
+  submitReportBtn.addEventListener('click', async function() {
+    var reason = reportReason.value.trim();
+    if (!reason || !reportTargetId) return;
+
+    submitReportBtn.disabled = true;
+    submitReportBtn.textContent = 'Submitting...';
+
+    var result = await supabaseClient.from('reports').insert({
+      reporter_id: currentUserId,
+      reported_id: reportTargetId,
+      reason: reason
+    });
+
+    submitReportBtn.disabled = false;
+    submitReportBtn.textContent = 'Submit Report';
+
+    if (result.error) {
+      alert('Failed: ' + result.error.message);
+      return;
+    }
+
+    alert('Report submitted. Thank you.');
+    reportOverlay.style.display = 'none';
+    reportReason.value = '';
+    reportTargetId = null;
+  });
+
   async function loadProfiles() {
     var userRes = await supabaseClient.auth.getUser();
     var user = userRes.data.user;
@@ -82,11 +158,30 @@
       return;
     }
     currentUserId = user.id;
+    startHeartbeat();
 
     var profilesRes = await supabaseClient.from('profiles').select('*');
     if (profilesRes.error) {
       msg.textContent = 'Error: ' + profilesRes.error.message;
       return;
+    }
+
+    var blocksRes = await supabaseClient
+      .from('blocks')
+      .select('blocked_id')
+      .eq('blocker_id', currentUserId);
+    var blockedByMeSet = {};
+    if (blocksRes.data) {
+      blocksRes.data.forEach(function(b) { blockedByMeSet[b.blocked_id] = true; });
+    }
+
+    var blockedMeRes = await supabaseClient
+      .from('blocks')
+      .select('blocker_id')
+      .eq('blocked_id', currentUserId);
+    var blockedMeSet = {};
+    if (blockedMeRes.data) {
+      blockedMeRes.data.forEach(function(b) { blockedMeSet[b.blocker_id] = true; });
     }
 
     var tiersRes = await supabaseClient.from('vip_tiers').select('id, name');
@@ -95,7 +190,9 @@
       tiersRes.data.forEach(function(t) { tierMap[t.id] = t.name; });
     }
 
-    var others = profilesRes.data.filter(function(p) { return p.id !== currentUserId; });
+    var others = profilesRes.data.filter(function(p) {
+      return p.id !== currentUserId && !blockedByMeSet[p.id] && !blockedMeSet[p.id];
+    });
 
     if (others.length === 0) {
       msg.textContent = 'No other profiles yet. Check back soon!';
@@ -115,12 +212,22 @@
     msg.textContent = '';
     others.forEach(function(p) {
       var vip = p._isVip ? vipInfo(p._tierName) : null;
+      var online = isOnline(p.last_seen);
 
       var card = document.createElement('div');
       card.className = 'profile-card' + (vip ? ' ' + vip.cardClass : '');
 
+      var cardTop = document.createElement('div');
+      cardTop.className = 'cardTop';
+
+      var photoWrap = document.createElement('div');
+      photoWrap.className = 'photoWrap';
       var img = document.createElement('img');
       img.src = p.photo_url || 'https://via.placeholder.com/70?text=%F0%9F%92%97';
+      var dot = document.createElement('div');
+      dot.className = 'onlineDot' + (online ? ' online' : '');
+      photoWrap.appendChild(img);
+      photoWrap.appendChild(dot);
 
       var info = document.createElement('div');
       info.className = 'profile-info';
@@ -175,9 +282,38 @@
         }
       });
 
-      card.appendChild(img);
-      card.appendChild(info);
-      card.appendChild(likeBtn);
+      cardTop.appendChild(photoWrap);
+      cardTop.appendChild(info);
+      cardTop.appendChild(likeBtn);
+
+      var actions = document.createElement('div');
+      actions.className = 'cardActions';
+
+      var reportBtn = document.createElement('button');
+      reportBtn.textContent = '🚩 Report';
+      reportBtn.addEventListener('click', function() {
+        reportTargetId = p.id;
+        reportOverlay.style.display = 'flex';
+      });
+
+      var blockBtn = document.createElement('button');
+      blockBtn.className = 'blockBtn';
+      blockBtn.textContent = '🚫 Block';
+      blockBtn.addEventListener('click', async function() {
+        if (!confirm('Block this user? They will no longer appear in Discover.')) return;
+        var result = await supabaseClient.from('blocks').insert({ blocker_id: currentUserId, blocked_id: p.id });
+        if (result.error) {
+          alert('Failed: ' + result.error.message);
+          return;
+        }
+        card.remove();
+      });
+
+      actions.appendChild(reportBtn);
+      actions.appendChild(blockBtn);
+
+      card.appendChild(cardTop);
+      card.appendChild(actions);
       grid.appendChild(card);
     });
   }
