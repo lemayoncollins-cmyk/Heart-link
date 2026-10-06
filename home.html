@@ -95,6 +95,26 @@
     return Promise.race([promise, timeout]);
   }
 
+  function listenForCoinChanges(userId) {
+    try {
+      supabaseClient
+        .channel('coin_updates_' + userId)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: 'id=eq.' + userId
+        }, function(payload) {
+          if (payload.new.coins != null) {
+            coinStat.textContent = payload.new.coins;
+          }
+        })
+        .subscribe();
+    } catch (err) {
+      console.log('Realtime coin listener failed to start:', err.message);
+    }
+  }
+
   async function init() {
     try {
       var userRes = await withTimeout(supabaseClient.auth.getUser(), 8000, 'Login check');
@@ -131,6 +151,8 @@
       matchStat.textContent = matchCount;
       document.getElementById('matchSub').textContent = matchCount + ' conversation' + (matchCount === 1 ? '' : 's');
 
+      listenForCoinChanges(user.id);
+
     } catch (err) {
       profileName.textContent = 'Error loading';
       console.log(err);
@@ -140,4 +162,4 @@
   init();
 </script>
 </body>
-      </html>
+  </html>
