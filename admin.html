@@ -33,6 +33,11 @@
 </div>
 
 <div class="section">
+  <h3>Pending Deposits</h3>
+  <div id="depositsList"><div class="msg">Loading...</div></div>
+</div>
+
+<div class="section">
   <h3>Pending Withdrawals</h3>
   <div id="withdrawalsList"><div class="msg">Loading...</div></div>
 </div>
@@ -51,6 +56,7 @@
   var totalCoins = document.getElementById('totalCoins');
   var pendingCount = document.getElementById('pendingCount');
   var withdrawalsList = document.getElementById('withdrawalsList');
+  var depositsList = document.getElementById('depositsList');
   var usersCard = document.getElementById('usersCard');
 
   async function makeAgent(userId) {
@@ -113,6 +119,59 @@
     });
     usersCard.querySelectorAll('.removeAgentBtn').forEach(function(btn) {
       btn.addEventListener('click', function() { removeAgent(btn.getAttribute('data-id')); });
+    });
+  }
+
+  async function loadDeposits() {
+    var res = await supabaseClient
+      .from('manual_deposits')
+      .select('*, profiles(full_name)')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: true });
+
+    if (!res.data) {
+      depositsList.innerHTML = '<div class="msg">Could not load deposits.</div>';
+      return;
+    }
+
+    if (res.data.length === 0) {
+      depositsList.innerHTML = '<div class="msg">No pending deposits.</div>';
+      return;
+    }
+
+    depositsList.innerHTML = '';
+    res.data.forEach(function(d) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var name = d.profiles ? (d.profiles.full_name || 'Someone') : 'Someone';
+      var dateStr = new Date(d.requested_at).toLocaleDateString();
+      card.innerHTML =
+        '<div class="row">' +
+          '<span><strong>' + name + '</strong> · ' + d.amount_ksh + ' KSh<br>' +
+          '<span style="color:#999;">Code: ' + d.mpesa_code + ' · ' + dateStr + '</span></span>' +
+          '<button class="payBtn approveDepositBtn" data-id="' + d.id + '">Approve</button>' +
+        '</div>';
+      depositsList.appendChild(card);
+    });
+
+    depositsList.querySelectorAll('.approveDepositBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var id = btn.getAttribute('data-id');
+        btn.disabled = true;
+        btn.textContent = 'Approving...';
+
+        var result = await supabaseClient.rpc('approve_manual_deposit', { p_deposit_id: id });
+
+        if (result.error) {
+          alert('Failed: ' + result.error.message);
+          btn.disabled = false;
+          btn.textContent = 'Approve';
+          return;
+        }
+
+        loadDeposits();
+        loadStatsAndUsers();
+      });
     });
   }
 
@@ -186,6 +245,7 @@
     }
 
     await loadStatsAndUsers();
+    await loadDeposits();
     await loadWithdrawals();
   }
 
