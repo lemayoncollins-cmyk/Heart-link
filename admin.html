@@ -21,6 +21,10 @@
   .status-pending { background:#fff3cd; color:#856404; }
   .status-paid { background:#d4edda; color:#155724; }
   .msg { text-align:center; color:#999; padding:20px; }
+  .reportActions { display:flex; gap:8px; margin-top:8px; }
+  .reportActions button { flex:1; padding:8px; border:none; border-radius:12px; font-weight:bold; font-size:12px; }
+  .dismissBtn { background:#eee; color:#555; }
+  .blockFromReportBtn { background:#e74c3c; color:white; }
 </style>
 </head>
 <body>
@@ -30,6 +34,11 @@
   <div class="statCard"><div class="value" id="totalUsers">--</div><div class="label">Total Users</div></div>
   <div class="statCard"><div class="value" id="totalCoins">--</div><div class="label">Coins in Circulation</div></div>
   <div class="statCard"><div class="value" id="pendingCount">--</div><div class="label">Pending Withdrawals</div></div>
+</div>
+
+<div class="section">
+  <h3>Pending Reports</h3>
+  <div id="reportsList"><div class="msg">Loading...</div></div>
 </div>
 
 <div class="section">
@@ -57,6 +66,7 @@
   var pendingCount = document.getElementById('pendingCount');
   var withdrawalsList = document.getElementById('withdrawalsList');
   var depositsList = document.getElementById('depositsList');
+  var reportsList = document.getElementById('reportsList');
   var usersCard = document.getElementById('usersCard');
 
   async function makeAgent(userId) {
@@ -119,6 +129,68 @@
     });
     usersCard.querySelectorAll('.removeAgentBtn').forEach(function(btn) {
       btn.addEventListener('click', function() { removeAgent(btn.getAttribute('data-id')); });
+    });
+  }
+
+  async function loadReports() {
+    var res = await supabaseClient
+      .from('reports')
+      .select('*, reporter:reporter_id(full_name), reported:reported_id(full_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    if (!res.data) {
+      reportsList.innerHTML = '<div class="msg">Could not load reports.</div>';
+      return;
+    }
+
+    if (res.data.length === 0) {
+      reportsList.innerHTML = '<div class="msg">No pending reports.</div>';
+      return;
+    }
+
+    reportsList.innerHTML = '';
+    res.data.forEach(function(r) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var reporterName = r.reporter ? (r.reporter.full_name || 'Someone') : 'Someone';
+      var reportedName = r.reported ? (r.reported.full_name || 'Someone') : 'Someone';
+      var dateStr = new Date(r.created_at).toLocaleDateString();
+      card.innerHTML =
+        '<div><strong>' + reporterName + '</strong> reported <strong>' + reportedName + '</strong></div>' +
+        '<div style="color:#666; margin-top:4px;">"' + r.reason + '"</div>' +
+        '<div style="color:#999; font-size:11px; margin-top:4px;">' + dateStr + '</div>' +
+        '<div class="reportActions">' +
+          '<button class="dismissBtn" data-id="' + r.id + '">Dismiss</button>' +
+          '<button class="blockFromReportBtn" data-id="' + r.id + '" data-reported-id="' + r.reported_id + '">Block Reported User</button>' +
+        '</div>';
+      reportsList.appendChild(card);
+    });
+
+    reportsList.querySelectorAll('.dismissBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await supabaseClient.from('reports').update({ status: 'dismissed' }).eq('id', btn.getAttribute('data-id'));
+        loadReports();
+      });
+    });
+
+    reportsList.querySelectorAll('.blockFromReportBtn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var reportedId = btn.getAttribute('data-reported-id');
+        var reportId = btn.getAttribute('data-id');
+        if (!confirm('This will remove this user from the platform discovery entirely (not just for one person). Continue?')) return;
+
+        var allUsersRes = await supabaseClient.from('profiles').select('id').neq('id', reportedId);
+        if (allUsersRes.data) {
+          var inserts = allUsersRes.data.map(function(u) {
+            return { blocker_id: u.id, blocked_id: reportedId };
+          });
+          await supabaseClient.from('blocks').upsert(inserts, { onConflict: 'blocker_id,blocked_id' });
+        }
+
+        await supabaseClient.from('reports').update({ status: 'actioned' }).eq('id', reportId);
+        loadReports();
+      });
     });
   }
 
@@ -245,6 +317,7 @@
     }
 
     await loadStatsAndUsers();
+    await loadReports();
     await loadDeposits();
     await loadWithdrawals();
   }
