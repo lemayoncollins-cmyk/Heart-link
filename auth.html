@@ -32,6 +32,9 @@
     <input type="email" id="loginEmail" placeholder="Email" required>
     <input type="password" id="loginPassword" placeholder="Password" required>
     <button type="submit">Log In</button>
+    <div style="text-align:center; margin-top:10px;">
+      <a href="#" id="forgotPasswordLink" style="color:#ff5f8a; font-size:13px; text-decoration:none;">Forgot password?</a>
+    </div>
   </form>
 
   <form id="signupForm">
@@ -112,6 +115,29 @@
       msg.textContent = 'Logged in! Redirecting...';
       setTimeout(function() { window.location.href = 'home.html'; }, 800);
     });
+  });
+
+  document.getElementById('forgotPasswordLink').addEventListener('click', async function(e) {
+    e.preventDefault();
+    if (!supabaseClient) { msg.textContent = 'Not connected yet - refresh the page.'; return; }
+    var email = document.getElementById('loginEmail').value.trim();
+    if (!email) {
+      msg.textContent = 'Enter your email above first, then tap "Forgot password?"';
+      return;
+    }
+
+    msg.textContent = 'Sending reset link...';
+
+    var result = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password.html'
+    });
+
+    if (result.error) {
+      msg.textContent = result.error.message;
+      return;
+    }
+
+    msg.textContent = 'Check your email for a password reset link.';
   });
 </script>
 </body>
